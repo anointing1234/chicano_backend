@@ -156,6 +156,16 @@ STATIC_ROOT = BASE_DIR / "staticfiles"     # `collectstatic` target; WhiteNoise 
 MEDIA_URL = "/media/"
 MEDIA_ROOT = BASE_DIR / "media"  # document uploads; use S3-compatible storage in production
 
+
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    # Compressed (gzip/brotli) files with a content hash in the name, so browsers can cache CSS/JS
+    # forever and still get the new version after every deploy.
+    "staticfiles": {"BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage"},
+}
+WHITENOISE_MAX_AGE = 60 * 60 * 24 * 365 if not DEBUG else 0
+
+
 # --------------------------------------------------------------------------- CORS
 # The Expo app on a phone does not need CORS (it is not a browser), but Expo Web and
 # the Super Admin web app do. List their origins here.
