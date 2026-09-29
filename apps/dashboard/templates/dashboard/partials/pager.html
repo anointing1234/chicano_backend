@@ -1,0 +1,34 @@
+{# Pager for a Django Page called `page` (see access.paginate). Keeps filters and sorting in every link; #}
+{# "Rows per page" is a small GET form that submits on change (and has a button when JavaScript is off). #}
+{% load dashboard_tags %}
+{% if page.paginator.count %}
+<nav class="pager" aria-label="Pagination">
+  <div class="pager-info">
+    <span>Showing <strong class="tabular">{{ page.start_index }}–{{ page.end_index }}</strong> of <strong class="tabular">{{ page.paginator.count|num }}</strong></span>
+    {% if page.page_sizes and page.paginator.count > 10 %}
+    <form class="pager-size" method="get" data-autosubmit>
+      {% for k, v in request.GET.items %}{% if k != "per_page" and k != "page" %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}{% endfor %}
+      <label for="per-page"><span>Rows per page</span></label>
+      <select id="per-page" name="per_page" data-inline>
+        {% for n in page.page_sizes %}<option value="{{ n }}"{% if n == page.per_page %} selected{% endif %}>{{ n }}</option>{% endfor %}
+      </select>
+      <noscript><button class="btn btn-secondary btn-sm" type="submit">Apply</button></noscript>
+    </form>
+    {% endif %}
+  </div>
+  {% if page.paginator.num_pages > 1 %}
+    <div class="pager-links">
+      {% if page.has_previous %}<a class="step" href="{% query page=page.previous_page_number %}" aria-label="Previous page">{% icon "chev-left" 16 %}<span>Previous</span></a>
+      {% else %}<span class="step off" aria-hidden="true">{% icon "chev-left" 16 %}<span>Previous</span></span>{% endif %}
+      {% elided_pages page as numbers %}
+      {% for n in numbers %}
+        {% if n|is_ellipsis %}<span class="gap">…</span>
+        {% elif n == page.number %}<span class="current" aria-current="page">{{ n }}</span>
+        {% else %}<a href="{% query page=n %}">{{ n }}</a>{% endif %}
+      {% endfor %}
+      {% if page.has_next %}<a class="step" href="{% query page=page.next_page_number %}" aria-label="Next page"><span>Next</span>{% icon "chev-right" 16 %}</a>
+      {% else %}<span class="step off" aria-hidden="true"><span>Next</span>{% icon "chev-right" 16 %}</span>{% endif %}
+    </div>
+  {% endif %}
+</nav>
+{% endif %}

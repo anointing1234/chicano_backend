@@ -1,0 +1,60 @@
+{% extends "dashboard/base.html" %}
+{# Document review: the file (served privately via document_file) next to the driver's details. #}
+{% load dashboard_tags %}
+{% block title %}Review {{ doc.get_doc_type_display }}{% endblock %}
+{% block panel %}driver{% endblock %}
+{% block crumbs %}<li><a href="{% url 'dashboard:documents' %}">Applications &amp; documents</a></li><li aria-current="page">{{ doc.get_doc_type_display }}</li>{% endblock %}
+{% block heading %}Review document{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>{{ doc.get_doc_type_display }}</h1><p>{{ p.user.full_name }} · {{ p.kind }} · uploaded {{ doc.created_at|date:"j M Y, H:i" }} · {{ pending_count }} waiting in the queue</p></div>
+  <div class="page-actions">
+    {% if doc.status == "pending" and can.providers_approve %}
+      <button class="btn btn-danger" type="button" data-dialog="reject-doc">Reject</button>
+      <form method="post" action="{% url 'dashboard:document_action' doc.pk 'approve' %}">{% csrf_token %}
+        <input type="hidden" name="next" value="{% if next_doc %}{% url 'dashboard:document_review' next_doc.pk %}{% else %}{% url 'dashboard:documents' %}{% endif %}">
+        <button class="btn btn-primary" type="submit">{% icon "check" 16 %} Approve{% if next_doc %} &amp; next{% endif %}</button></form>
+    {% else %}{% badge doc.status %}{% endif %}
+    {% if next_doc %}<a class="btn btn-ghost" href="{% url 'dashboard:document_review' next_doc.pk %}">Skip {% icon "arrow" 16 %}</a>{% endif %}
+  </div>
+</div>
+
+<div class="doc-review">
+  <section>
+    <div class="doc-preview">
+      {% if file_missing %}<div class="empty"><div class="empty-title">File not found in storage</div><p>The upload record exists but the file is missing. Ask the driver or rider to upload it again, or check MEDIA_ROOT / your storage bucket.</p></div>
+      {% elif is_image %}<img src="{% url 'dashboard:document_file' doc.pk %}" alt="{{ doc.get_doc_type_display }}, front, uploaded by {{ p.user.full_name }}">
+      {% elif is_pdf %}<iframe src="{% url 'dashboard:document_file' doc.pk %}" title="{{ doc.get_doc_type_display }} (PDF)"></iframe>
+      {% else %}<div class="empty"><div class="empty-title">Preview not available</div><p>Open the file in a new tab to check it.</p></div>{% endif %}
+    </div>
+    {% if not file_missing %}
+    <p class="small" style="margin-top:10px"><a href="{% url 'dashboard:document_file' doc.pk %}" target="_blank" rel="noopener">Open front in new tab</a>
+      {% if doc.back_file %} · <a href="{% url 'dashboard:document_file' doc.pk %}?side=back" target="_blank" rel="noopener">Open back</a>{% endif %}
+      · Every view is recorded in the audit log.</p>
+    {% endif %}
+  </section>
+  <div>
+    <section class="card">
+      <div class="card-head"><h2>Check against</h2><a class="btn btn-ghost btn-sm" href="{% url 'dashboard:provider_detail' p.pk %}">Full profile</a></div>
+      <dl class="kv">
+        <div><dt>Name on account</dt><dd><strong>{{ p.user.full_name }}</strong></dd></div>
+        <div><dt>Date of birth</dt><dd>{{ p.date_of_birth|date:"j M Y"|default:"—" }}</dd></div>
+        <div><dt>Document number</dt><dd class="mono">{{ doc.number|default:"—" }}</dd></div>
+        <div><dt>Expires</dt><dd>{{ doc.expires_at|date:"j M Y"|default:"—" }}</dd></div>
+        <div><dt>Service</dt><dd>{% service_tag p.service %} {{ p.kind|capfirst }}</dd></div>
+        {% if vehicle %}<div><dt>Vehicle</dt><dd>{{ vehicle.color }} {{ vehicle.make }} {{ vehicle.model }} ({{ vehicle.year }}) · <span class="mono">{{ vehicle.plate_number }}</span></dd></div>{% endif %}
+        {% if doc.reviewed_by %}<div><dt>Reviewed</dt><dd>{{ doc.reviewed_by.full_name }}, {{ doc.reviewed_at|date:"j M Y, H:i" }}</dd></div>{% endif %}
+        {% if doc.rejection_reason %}<div><dt>Rejection reason</dt><dd>{{ doc.rejection_reason }}</dd></div>{% endif %}
+      </dl>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Other documents</h2></div>
+      {% for o in others %}<div class="list-row"><span>{{ o.get_doc_type_display }}</span>{% if o.status == "pending" %}<a href="{% url 'dashboard:document_review' o.pk %}">{% badge o.status "Review" %}</a>{% else %}{% badge o.status %}{% endif %}</div>
+      {% empty %}<p class="muted small">No other documents.</p>{% endfor %}
+    </section>
+  </div>
+</div>
+{% url 'dashboard:document_action' doc.pk 'reject' as reject_url %}
+{% if next_doc %}{% url 'dashboard:document_review' next_doc.pk as next_url %}{% else %}{% url 'dashboard:documents' as next_url %}{% endif %}
+{% include "dashboard/partials/reason_dialog.html" with id="reject-doc" action=reject_url next=next_url heading="Reject this document?" text="They'll see your reason in the app and can upload a new one." placeholder="e.g. Photo is blurry — retake it in daylight with all four corners visible" button="Reject document" danger=True %}
+{% endblock %}

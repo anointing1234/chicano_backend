@@ -1,0 +1,6 @@
+{# Red banner while any SOS alert is open. Refreshed every 10 s by dashboard.js (see base.html). #}
+{% load dashboard_tags %}{% if open_sos_count %}
+<a class="sos-banner" href="{% url 'dashboard:support' %}?tab=sos" role="alert"><span class="pulse" aria-hidden="true"></span>
+  <span>{{ open_sos_count }} open SOS alert{{ open_sos_count|pluralize }} — someone needs help now</span>
+  <span class="go">Respond {% icon "arrow" 14 %}</span></a>
+{% endif %}

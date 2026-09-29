@@ -1,0 +1,62 @@
+{% extends "dashboard/base.html" %}
+{# One ticket: conversation (internal notes highlighted), reply box, owner/status/priority, related records. #}
+{% load dashboard_tags %}
+{% block title %}{{ ticket.subject }}{% endblock %}
+{% block panel %}customer{% endblock %}
+{% block crumbs %}<li><a href="{% url 'dashboard:support' %}">Support tickets</a></li><li aria-current="page">{{ ticket.subject|truncatechars:40 }}</li>{% endblock %}
+{% block heading %}Ticket{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>{{ ticket.subject }}</h1>
+    <p><a href="{% url 'dashboard:user_detail' ticket.user.pk %}">{{ ticket.user.full_name }}</a> · {{ ticket.user.phone }} · {{ ticket.get_category_display }} · opened {{ ticket.created_at|date:"j M Y, H:i" }}</p>
+    <div class="chips">{% badge ticket.status %}{% badge ticket.priority %}{% if ticket.assigned_to %}<span class="chip">Owner: {{ ticket.assigned_to.full_name }}</span>{% else %}<span class="chip warn">Unassigned</span>{% endif %}</div></div>
+  <div class="page-actions">{% if ticket.ride %}<a class="btn btn-secondary" href="{% url 'dashboard:trip_detail' ticket.ride.pk %}">{% icon "route" 16 %} Open ride</a>{% endif %}</div>
+</div>
+<div class="grid grid-main">
+  <section class="card">
+    <div class="card-head"><h2>Conversation</h2><span class="small muted">Yellow = internal note (customer can't see it)</span></div>
+    <div class="thread">
+      {% for m in thread %}
+        <div class="msg{% if m.sender.is_staff %} staff{% endif %}{% if m.is_internal_note %} note{% endif %}">
+          <div class="msg-head"><strong>{{ m.sender.full_name }}</strong>{% if m.is_internal_note %}<span class="chip warn">Internal note</span>{% elif m.sender.is_staff %}<span class="chip">Staff</span>{% endif %}<span class="muted small">{{ m.created_at|date:"j M, H:i" }}</span></div>
+          <div>{{ m.body|linebreaksbr }}</div>
+          {% if m.attachment %}<a class="small" href="{{ m.attachment.url }}" target="_blank" rel="noopener">Attachment</a>{% endif %}
+        </div>
+      {% empty %}<p class="muted">No messages yet.</p>{% endfor %}
+    </div>
+    <form class="composer" method="post" action="{% url 'dashboard:ticket_reply' ticket.pk %}">{% csrf_token %}
+      <div class="field"><label for="{{ reply_form.body.id_for_label }}">Reply to {{ ticket.user.first_name|default:"the customer" }}</label>{{ reply_form.body }}</div>
+      <div class="composer-actions">
+        <div class="field check">{{ reply_form.internal }}<label for="{{ reply_form.internal.id_for_label }}">Internal note only</label></div>
+        <button class="btn btn-secondary" type="submit" name="resolve" value="1">Send &amp; resolve</button>
+        <button class="btn btn-primary" type="submit">Send</button>
+      </div>
+      <p class="small muted" style="margin-top:8px">Replies are pushed to their phone and set the ticket to “waiting on the customer”.</p>
+    </form>
+  </section>
+  <div>
+    <section class="card">
+      <div class="card-head"><h2>Manage</h2></div>
+      <form method="post" action="{% url 'dashboard:ticket_update' ticket.pk %}">{% csrf_token %}
+        <div class="field"><label for="{{ update_form.assigned_to.id_for_label }}">Owner</label>{{ update_form.assigned_to }}</div>
+        <div class="field"><label for="{{ update_form.status.id_for_label }}">Status</label>{{ update_form.status }}</div>
+        <div class="field"><label for="{{ update_form.priority.id_for_label }}">Priority</label>{{ update_form.priority }}</div>
+        <button class="btn btn-navy" type="submit" style="width:100%">Save</button>
+      </form>
+    </section>
+    {% if lost %}
+    <section class="card">
+      <div class="card-head"><h2>Lost item</h2>{% badge lost.status %}</div>
+      <p>{{ lost.get_category_display }}: {{ lost.description }}</p><p class="small muted">Contact: {{ lost.contact_phone }}</p>
+      <a class="btn btn-secondary btn-sm" href="{% url 'dashboard:lost_items' %}?q={{ lost.contact_phone|urlencode }}&status=">Update in Lost items</a>
+    </section>
+    {% endif %}
+    {% if other_tickets %}
+    <section class="card">
+      <div class="card-head"><h2>Their other tickets</h2></div>
+      {% for t in other_tickets %}<a class="list-row" href="{% url 'dashboard:ticket_detail' t.pk %}"><span>{{ t.subject|truncatechars:34 }}</span>{% badge t.status %}</a>{% endfor %}
+    </section>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

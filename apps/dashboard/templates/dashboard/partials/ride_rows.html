@@ -1,0 +1,18 @@
+{# Compact trips table (customer and driver pages). `rides` = queryset/list; `empty_title` optional. #}
+{% load dashboard_tags %}
+{% if rides %}
+<div class="table-wrap"><table class="table responsive">
+  <thead><tr><th>Ride</th><th>Type</th><th>Route</th><th class="right">Fare</th><th>Status</th></tr></thead>
+  <tbody>
+  {% for r in rides %}
+    <tr class="clickable" data-href="{% url 'dashboard:trip_detail' r.pk %}">
+      <td class="primary"><a href="{% url 'dashboard:trip_detail' r.pk %}">{{ r.requested_at|date:"j M Y, H:i" }}</a><div class="cell-sub mono">{{ r.pk|stringformat:"s"|truncatechars:9 }}</div></td>
+      <td>{% service_tag r.service %} {{ r.ride_type.name }}</td>
+      <td><div class="route"><span>{{ r.pickup_address }}</span><span class="muted">→ {{ r.dropoff_address }}</span></div></td>
+      <td class="right">{{ r.total_amount|naira }}<div class="cell-sub">{{ r.payment_method|label }}</div></td>
+      <td>{% badge r.status %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}{% include "dashboard/partials/empty.html" with title=empty_title|default:"No rides yet" icon="route" %}{% endif %}

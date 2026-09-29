@@ -1,0 +1,86 @@
+{% extends "dashboard/base.html" %}
+{# Reports & analytics: revenue, promos, customer growth/retention, driver activity; breakdowns; CSV export. #}
+{% load dashboard_tags %}
+{% block title %}Reports & analytics{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Reports &amp; analytics</h1><p>{{ period.label }}{% if city %} · {{ city }}{% endif %}. Completed trips are counted on the day they finished.</p></div>
+  <div class="page-actions">
+    {% include "dashboard/partials/service_switch.html" %}
+    {% if cities|length > 1 %}
+    <form method="get" data-autosubmit class="range">
+      {% for k, v in request.GET.items %}{% if k != "city" %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}{% endfor %}
+      <label class="sr-only" for="city">City</label>
+      <select id="city" name="city" style="width:auto"><option value="">All cities</option>{% for c in cities %}<option value="{{ c }}"{% if c == city %} selected{% endif %}>{{ c }}</option>{% endfor %}</select>
+    </form>
+    {% endif %}
+    {% include "dashboard/partials/range_filter.html" %}
+    <a class="btn btn-secondary" href="{% query export='csv' %}">{% icon "download" 16 %} Export CSV</a>
+  </div>
+</div>
+
+<h2 class="section-title">Revenue</h2>
+<div class="stats">
+  {% include "dashboard/partials/stat.html" with title="Gross bookings" value=r.gross|naira icon="money" desc="Paid by customers for completed trips" delta=r.gross_delta %}
+  {% include "dashboard/partials/stat.html" with title="Commission" value=r.commission|naira icon="bank" desc="Platform revenue from those trips" delta=r.commission_delta %}
+  {% include "dashboard/partials/stat.html" with title="Promo spend" value=r.promo|naira icon="tag" desc="Discounts paid by Chicano Cruise" delta=r.promo_delta bad_up=True %}
+  {% include "dashboard/partials/stat.html" with title="Average fare" value=r.avg_fare|naira icon="card" desc="Gross bookings ÷ completed trips" %}
+</div>
+<div class="stats">
+  {% include "dashboard/partials/stat.html" with title="Completed trips" value=r.trips|num icon="check" desc=r.trips_desc delta=r.trips_delta %}
+  {% if r.cancel_rate is not None %}{% include "dashboard/partials/stat.html" with title="Cancellation rate" value=r.cancel_rate|pct icon="alert" desc=r.cancel_rate_desc %}
+  {% else %}{% include "dashboard/partials/stat.html" with title="Cancellation rate" value="—" icon="alert" desc="No bookings in the period" %}{% endif %}
+  {% include "dashboard/partials/stat.html" with title="Tips" value=r.tips|naira icon="trophy" desc="Passed 100% to drivers and riders" %}
+  {% include "dashboard/partials/stat.html" with title="Refunded" value=r.refunds|naira icon="card" desc="On trips completed in the period" %}
+</div>
+
+<div class="grid grid-2">
+  <section class="card"><div class="card-head"><div><h2>Completed trips per day</h2><p>{{ period.label }}</p></div></div>
+    {% include "dashboard/partials/bar_chart.html" with series=r.chart_trips aria="Completed trips per day" %}</section>
+  <section class="card"><div class="card-head"><div><h2>Gross bookings per day</h2><p>Naira, completed trips</p></div></div>
+    {% include "dashboard/partials/bar_chart.html" with series=r.chart_gross aria="Gross bookings per day" dense=True %}</section>
+</div>
+
+<div class="grid grid-3">
+  <section class="card"><div class="card-head"><h2>By business line</h2></div>{% include "dashboard/partials/hbars.html" with rows=r.by_service %}
+    <div class="legend" style="margin-top:12px"><span><i style="background:var(--car)"></i>Cars</span><span><i style="background:var(--orange)"></i>Bikes</span></div></section>
+  <section class="card"><div class="card-head"><h2>By ride type</h2><p>Trips</p></div>{% include "dashboard/partials/hbars.html" with rows=r.by_ride_type %}</section>
+  <section class="card"><div class="card-head"><h2>By city</h2><p>Gross bookings</p></div>{% include "dashboard/partials/hbars.html" with rows=r.by_city %}</section>
+</div>
+
+<div class="grid grid-2">
+  <section class="card">
+    <div class="card-head"><div><h2>Customer growth &amp; retention</h2><p>Returning = 2 or more completed trips in the period</p></div></div>
+    <dl class="kv">
+      <div><dt>New customers</dt><dd class="num"><strong>{{ r.new_customers|num }}</strong></dd></div>
+      <div><dt>Customers who rode</dt><dd class="num">{{ r.riding_customers|num }}</dd></div>
+      <div><dt>Returning customers</dt><dd class="num">{{ r.returning_customers|num }}{% if r.retention is not None %} <span class="muted">({{ r.retention|pct }} of those who rode)</span>{% endif %}</dd></div>
+    </dl>
+  </section>
+  <section class="card">
+    <div class="card-head"><div><h2>Driver &amp; rider activity</h2><p>Active = completed at least one trip in the period</p></div></div>
+    <dl class="kv">
+      <div><dt>Active drivers &amp; riders</dt><dd class="num"><strong>{{ r.active_providers|num }}</strong></dd></div>
+      <div><dt>Trips per active driver/rider</dt><dd class="num">{{ r.trips_per_provider|default:"—" }}</dd></div>
+    </dl>
+  </section>
+</div>
+
+<section class="card">
+  <div class="card-head"><div><h2>Promo codes used</h2><p>Discounts on trips completed in the period</p></div></div>
+  {% if r.promos %}
+  <div class="table-wrap"><table class="table responsive">
+    <thead><tr><th>Code</th><th class="right">Uses</th><th class="right">Discount given</th></tr></thead>
+    <tbody>{% for p in r.promos %}<tr><td class="primary mono">{{ p.code }}</td><td class="right">{{ p.uses|num }}</td><td class="right">{{ p.total|naira }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}{% include "dashboard/partials/empty.html" with title="No promo codes used in this period" icon="tag" %}{% endif %}
+</section>
+
+<section class="card">
+  <div class="card-head"><div><h2>Daily figures</h2><p>The same rows as the CSV export</p></div></div>
+  <div class="table-wrap"><table class="table responsive">
+    <thead><tr><th>Date</th><th class="right">Completed trips</th><th class="right">Gross bookings</th><th class="right">New customers</th></tr></thead>
+    <tbody>{% for d in r.daily reversed %}<tr><td class="primary">{{ d.date|date:"D j M Y" }}</td><td class="right">{{ d.trips|num }}</td><td class="right">{{ d.gross|naira }}</td><td class="right">{{ d.new_customers|num }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% endblock %}

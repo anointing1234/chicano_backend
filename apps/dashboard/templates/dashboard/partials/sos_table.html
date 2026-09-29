@@ -1,0 +1,30 @@
+{# SOS alerts table. Refreshed every 5 s on Support › SOS alerts. #}
+{% load dashboard_tags %}
+{% if alerts %}
+<div class="table-wrap"><table class="table responsive">
+  <thead><tr><th>Raised</th><th>Person</th><th>Ride</th><th>Location</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead>
+  <tbody>
+  {% for a in alerts %}
+    <tr>
+      <td class="primary"><strong{% if a.status == "open" %} class="neg"{% endif %}>{{ a.created_at|ago }}</strong><div class="cell-sub">{{ a.created_at|date:"j M, H:i" }}</div></td>
+      <td>{{ a.raised_by.full_name }}<div class="cell-sub"><a href="tel:{{ a.raised_by.phone }}">{{ a.raised_by.phone }}</a></div></td>
+      <td>{% if a.ride %}<a href="{% url 'dashboard:trip_detail' a.ride.pk %}">{% service_tag a.ride.service %} {{ a.ride.status|label }}</a>{% else %}<span class="muted">No ride</span>{% endif %}</td>
+      <td>{% if a.lat %}<a href="https://maps.google.com/?q={{ a.lat }},{{ a.lng }}" target="_blank" rel="noopener">Open in Maps</a>{% else %}—{% endif %}</td>
+      <td>{% if a.status == "open" %}{% badge "urgent" "Open" %}{% else %}{% badge a.status %}{% endif %}
+        {% if a.handled_by %}<div class="cell-sub">{{ a.handled_by.full_name }}</div>{% endif %}
+        {% if a.notes %}<div class="cell-sub pre">{{ a.notes }}</div>{% endif %}</td>
+      <td class="actions">
+        {% if a.status != "resolved" %}<div class="row-actions">
+          {% if a.status == "open" %}<button class="btn btn-danger btn-sm" type="button" data-dialog="ack-{{ a.pk }}">Acknowledge</button>{% endif %}
+          <button class="btn btn-secondary btn-sm" type="button" data-dialog="resolve-{{ a.pk }}">Resolve</button>
+        </div>
+        {% url 'dashboard:sos_action' a.pk 'acknowledge' as ack_url %}{% url 'dashboard:sos_action' a.pk 'resolve' as resolve_url %}
+        {% include "dashboard/partials/reason_dialog.html" with prefix="ack-" id=a.pk action=ack_url heading="Acknowledge SOS" text="They get a push: “Safety team is on it”. Then call them straight away." button="Acknowledge" reason="optional" field="notes" %}
+        {% include "dashboard/partials/reason_dialog.html" with prefix="resolve-" id=a.pk action=resolve_url heading="Resolve SOS" text="Write what happened for the record." button="Resolve" reason="optional" field="notes" %}
+        {% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% else %}{% include "dashboard/partials/empty.html" with title="No active SOS alerts" text="New alerts appear here within seconds, and a red banner shows on every page." icon="check" %}{% endif %}

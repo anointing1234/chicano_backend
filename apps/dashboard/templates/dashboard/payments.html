@@ -1,0 +1,83 @@
+{% extends "dashboard/base.html" %}
+{# Payments & refunds: records, refund history, failed charges, fare disputes. Refunds are issued from a ride page. #}
+{% load dashboard_tags %}
+{% block title %}Payments & refunds{% endblock %}
+{% block panel %}customer{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Payments &amp; refunds</h1><p>{{ period.label }}. To refund a customer, open the ride and use <strong>Refund</strong> — full or partial.</p></div>
+  <div class="page-actions">{% if tab != "failed" and tab != "disputes" %}{% include "dashboard/partials/range_filter.html" %}{% endif %}</div>
+</div>
+<div class="stats">
+  {% include "dashboard/partials/stat.html" with title="Collected" value=summary.collected|naira icon="money" desc="Successful charges and cash in the period" %}
+  {% include "dashboard/partials/stat.html" with title="Refunded to cards" value=summary.card_refunds|naira icon="card" desc="Sent back through the payment gateway" %}
+  {% include "dashboard/partials/stat.html" with title="Refunded to wallets" value=summary.wallet_refunds|naira icon="bank" desc="Credited to Chicano wallets" %}
+  {% url 'dashboard:payments' as pay_url %}
+  {% include "dashboard/partials/stat.html" with title="Unpaid rides" value=summary.open_failed_rides|num icon="alert" desc="Charge failed and not yet retried (all time)" href=pay_url|add:"?tab=failed" alert=summary.open_failed_rides %}
+</div>
+<nav class="tabs" aria-label="Payment views">
+  <a class="tab{% if tab == 'records' %} active{% endif %}" href="?tab=records">Payment records</a>
+  <a class="tab{% if tab == 'refunds' %} active{% endif %}" href="?tab=refunds">Refund history</a>
+  <a class="tab{% if tab == 'failed' %} active{% endif %}" href="?tab=failed">Failed payments{% if summary.open_failed_rides %} <span class="nav-count">{{ summary.open_failed_rides }}</span>{% endif %}</a>
+  <a class="tab{% if tab == 'disputes' %} active{% endif %}" href="?tab=disputes">Fare disputes</a>
+</nav>
+<section class="card">
+  <form class="filters" method="get" data-autosubmit role="search">
+    <input type="hidden" name="tab" value="{{ tab }}">{% if f.range %}<input type="hidden" name="range" value="{{ f.range }}">{% endif %}
+    <div class="f grow"><label for="q">Search</label><div class="search-field">{% icon "search" 16 %}<input id="q" type="search" name="q" value="{{ f.q|default:'' }}" placeholder="Customer name, phone{% if tab == 'records' %} or gateway reference{% endif %}"></div></div>
+    {% if tab == "records" %}
+      <div class="f"><label for="purpose">Purpose</label><select id="purpose" name="purpose"><option value="">Any</option>{% for v, l in purposes %}<option value="{{ v }}"{% if f.purpose == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+      <div class="f"><label for="method">Method</label><select id="method" name="method"><option value="">Any</option>
+        <option value="cash"{% if f.method == "cash" %} selected{% endif %}>Cash</option><option value="card"{% if f.method == "card" %} selected{% endif %}>Card</option><option value="wallet"{% if f.method == "wallet" %} selected{% endif %}>Wallet</option></select></div>
+      <div class="f"><label for="status">Result</label><select id="status" name="status"><option value="">Any</option>
+        <option value="succeeded"{% if f.status == "succeeded" %} selected{% endif %}>Succeeded</option><option value="failed"{% if f.status == "failed" %} selected{% endif %}>Failed</option></select></div>
+    {% elif tab == "disputes" %}
+      <div class="f"><label for="status">Ticket status</label><select id="status" name="status"><option value="">Any</option>
+        <option value="open"{% if f.status == "open" %} selected{% endif %}>Open</option><option value="pending"{% if f.status == "pending" %} selected{% endif %}>Waiting on customer</option>
+        <option value="resolved"{% if f.status == "resolved" %} selected{% endif %}>Resolved</option><option value="closed"{% if f.status == "closed" %} selected{% endif %}>Closed</option></select></div>
+    {% endif %}
+    <div class="filters-actions"><button class="btn btn-secondary" type="submit">{% icon "search" 16 %} Search</button>
+      {% filters_active "q" "purpose" "method" "status" as filtered %}{% if filtered %}<a class="btn btn-ghost" href="?tab={{ tab }}">Clear</a>{% endif %}</div>
+  </form>
+
+  {% if page.object_list %}
+  <div class="table-wrap"><table class="table responsive">
+  {% if tab == "records" %}
+    <thead><tr><th>Date</th><th>Customer</th><th>Purpose</th><th>Method</th><th class="right">Amount</th><th>Result</th></tr></thead>
+    <tbody>{% for p in page %}<tr{% if p.ride %} class="clickable" data-href="{% url 'dashboard:trip_detail' p.ride.pk %}"{% endif %}>
+      <td class="primary">{{ p.created_at|date:"j M Y, H:i" }}{% if p.gateway_reference %}<div class="cell-sub mono">{{ p.gateway_reference }}</div>{% endif %}</td>
+      <td><a href="{% url 'dashboard:user_detail' p.user.pk %}">{{ p.user.full_name }}</a><div class="cell-sub">{{ p.user.phone }}</div></td>
+      <td>{{ p.get_purpose_display }}{% if p.ride %}<div class="cell-sub"><a href="{% url 'dashboard:trip_detail' p.ride.pk %}">Ride #{{ p.ride.pk|stringformat:"s"|slice:":8" }}</a></div>{% endif %}</td>
+      <td>{{ p.method|label }}</td><td class="right {% if p.amount < 0 %}neg{% endif %}">{{ p.amount|naira:True }}</td>
+      <td>{% if p.status == "succeeded" %}{% badge "paid" "Succeeded" %}{% else %}{% badge "failed" %}<div class="cell-sub">{{ p.failure_reason }}</div>{% endif %}</td></tr>{% endfor %}</tbody>
+  {% elif tab == "refunds" %}
+    <thead><tr><th>Date</th><th>Customer</th><th>Ride</th><th>To</th><th class="right">Amount</th><th>Note</th></tr></thead>
+    <tbody>{% for r in page %}<tr>
+      <td class="primary">{{ r.when|date:"j M Y, H:i" }}</td>
+      <td><a href="{% url 'dashboard:user_detail' r.user.pk %}">{{ r.user.full_name }}</a><div class="cell-sub">{{ r.user.phone }}</div></td>
+      <td>{% if r.ride %}<a href="{% url 'dashboard:trip_detail' r.ride.pk %}">#{{ r.ride.pk|stringformat:"s"|slice:":8" }}</a>{% else %}—{% endif %}</td>
+      <td>{{ r.channel }}</td><td class="right">{{ r.amount|naira:True }}</td><td class="small">{{ r.note|default:"—" }}</td></tr>{% endfor %}</tbody>
+  {% elif tab == "failed" %}
+    <thead><tr><th>Ride</th><th>Customer</th><th>Method</th><th class="right">Amount due</th><th>Completed</th><th><span class="sr-only">Actions</span></th></tr></thead>
+    <tbody>{% for r in page %}<tr class="clickable" data-href="{% url 'dashboard:trip_detail' r.pk %}">
+      <td class="primary"><a href="{% url 'dashboard:trip_detail' r.pk %}">#{{ r.pk|stringformat:"s"|slice:":8" }}</a> {% service_tag r.service %}<div class="cell-sub">{{ r.ride_type.name }}</div></td>
+      <td>{{ r.customer.full_name }}<div class="cell-sub">{{ r.customer.phone }}</div></td>
+      <td>{{ r.payment_method|label }}</td><td class="right">{{ r.total_amount|naira }}</td><td>{{ r.completed_at|date:"j M Y, H:i" }}</td>
+      <td class="actions"><a class="row-go" href="{% url 'dashboard:trip_detail' r.pk %}" aria-label="View ride" data-tip="View ride">{% icon "chev-right" 18 %}</a></td></tr>{% endfor %}</tbody>
+  {% else %}
+    <thead><tr><th>Subject</th><th>Customer</th><th>Ride</th><th>Priority</th><th>Status</th><th>Updated</th></tr></thead>
+    <tbody>{% for t in page %}<tr class="clickable" data-href="{% url 'dashboard:ticket_detail' t.pk %}">
+      <td class="primary"><a href="{% url 'dashboard:ticket_detail' t.pk %}">{{ t.subject }}</a></td>
+      <td>{{ t.user.full_name }}<div class="cell-sub">{{ t.user.phone }}</div></td>
+      <td>{% if t.ride %}<a href="{% url 'dashboard:trip_detail' t.ride.pk %}">#{{ t.ride.pk|stringformat:"s"|slice:":8" }}</a>{% else %}—{% endif %}</td>
+      <td>{% badge t.priority %}</td><td>{% badge t.status %}</td><td>{{ t.updated_at|ago }}</td></tr>{% endfor %}</tbody>
+  {% endif %}
+  </table></div>
+  {% include "dashboard/partials/pager.html" %}
+  {% else %}
+    {% if tab == "failed" %}{% include "dashboard/partials/empty.html" with title="No unpaid rides" text="Rides land here when a card or wallet charge fails after the trip." icon="check" %}
+    {% elif tab == "disputes" %}{% include "dashboard/partials/empty.html" with title="No fare disputes" text="Tickets in the “Fares & payments” category appear here." icon="lifebuoy" %}
+    {% else %}{% include "dashboard/partials/empty.html" with title="No payment records for this period" text="Try a longer date range or clear the search." clear_url="?tab="|add:tab icon="card" %}{% endif %}
+  {% endif %}
+</section>
+{% endblock %}

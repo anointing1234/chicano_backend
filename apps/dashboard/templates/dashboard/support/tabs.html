@@ -1,0 +1,6 @@
+{# Tabs shared by the support pages. #}
+<nav class="tabs" aria-label="Support">
+  <a class="tab{% if tab == 'tickets' %} active{% endif %}" href="{% url 'dashboard:support' %}"{% if tab == 'tickets' %} aria-current="page"{% endif %}>Tickets</a>
+  <a class="tab{% if tab == 'sos' %} active{% endif %}" href="{% url 'dashboard:support' %}?tab=sos"{% if tab == 'sos' %} aria-current="page"{% endif %}>SOS alerts{% if open_sos_count %} <span class="nav-count">{{ open_sos_count }}</span>{% endif %}</a>
+  <a class="tab" href="{% url 'dashboard:lost_items' %}">Lost items</a>
+</nav>

@@ -1,0 +1,7 @@
+{# Live / scheduled / ended filter for promos and incentives. #}
+<div class="f"><label for="state">Show</label><select id="state" name="state">
+  <option value="">All</option>
+  <option value="live"{% if f.state == "live" %} selected{% endif %}>Live now</option>
+  <option value="scheduled"{% if f.state == "scheduled" %} selected{% endif %}>Scheduled</option>
+  <option value="ended"{% if f.state == "ended" %} selected{% endif %}>Ended or switched off</option>
+</select></div>

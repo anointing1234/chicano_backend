@@ -1,0 +1,90 @@
+{% extends "dashboard/base.html" %}
+{# Payouts & commission (finance): payout pipeline with run / mark paid / mark failed, and commission earned. #}
+{% load dashboard_tags %}
+{% block title %}Payouts & commission{% endblock %}
+{% block panel %}driver{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Payouts &amp; commission</h1><p>What we pay drivers and riders (weekly runs plus instant cash-outs from the app), and what we keep.</p></div>
+  <div class="page-actions">{% include "dashboard/partials/service_switch.html" %}
+    {% if tab != "commission" %}<button class="btn btn-primary" type="button" data-dialog="run-payouts">{% icon "bank" 16 %} Run weekly payouts</button>{% endif %}</div>
+</div>
+<div class="stats">
+  {% for key, label, n, total in totals %}{% if key != "on_hold" %}
+    {% url 'dashboard:payouts' as pu %}
+    {% include "dashboard/partials/stat.html" with title=label value=total|naira icon="bank" desc=n|num|stringformat:"s"|add:" payouts" href=pu|add:"?status="|add:key link="Show" %}
+  {% endif %}{% endfor %}
+</div>
+<nav class="tabs"><a class="tab{% if tab != 'commission' %} active{% endif %}" href="?tab=payouts">Payouts</a><a class="tab{% if tab == 'commission' %} active{% endif %}" href="?tab=commission">Commission</a></nav>
+
+{% if tab == "commission" %}
+<div class="page-actions" style="margin-bottom:16px">{% include "dashboard/partials/range_filter.html" %}</div>
+<div class="stats">
+  {% include "dashboard/partials/stat.html" with title="Commission earned" value=commission|naira icon="bank" desc="On trips completed in the period" %}
+  {% include "dashboard/partials/stat.html" with title="Fares before commission" value=gross|naira icon="money" desc="Gross fares on those trips" %}
+  {% if effective_rate is not None %}{% include "dashboard/partials/stat.html" with title="Effective rate" value=effective_rate|pct icon="gauge" desc="Commission ÷ gross fares" %}{% endif %}
+</div>
+<div class="grid grid-main">
+  <section class="card">
+    <div class="card-head"><div><h2>Commission rules</h2><p>Set per ride type and city on each fare rule.{% if can.settings_edit %} Edit them in Settings.{% else %} Only a super admin can change them.{% endif %}</p></div>
+      {% if can.settings_edit %}<a class="btn btn-secondary btn-sm" href="{% url 'dashboard:settings' %}?tab=fares">Edit fares</a>{% endif %}</div>
+    {% if rules %}<div class="table-wrap"><table class="table responsive">
+      <thead><tr><th>Ride type</th><th>City</th><th class="right">Commission</th><th>Status</th></tr></thead>
+      <tbody>{% for r in rules %}<tr><td class="primary">{% service_tag r.ride_type.service %} {{ r.ride_type.name }}</td><td>{{ r.city }}</td><td class="right">{{ r.commission_percent|floatformat:"-2" }}%</td>
+        <td>{% if r.is_active %}{% badge "active" %}{% else %}{% badge "inactive" "Inactive" %}{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+    {% else %}{% include "dashboard/partials/empty.html" with title="No fare rules yet" icon="gear" %}{% endif %}
+  </section>
+  <section class="card"><div class="card-head"><h2>Commission by ride type</h2></div>{% include "dashboard/partials/hbars.html" with rows=by_type %}</section>
+</div>
+{% else %}
+<section class="card">
+  <form class="filters" method="get" data-autosubmit role="search">
+    <div class="f grow"><label for="q">Search</label><div class="search-field">{% icon "search" 16 %}<input id="q" type="search" name="q" value="{{ f.q|default:'' }}" placeholder="Name, phone or bank reference"></div></div>
+    <div class="f"><label for="status">Status</label><select id="status" name="status">
+      {% for v, l in statuses %}<option value="{{ v }}"{% if status == v %} selected{% endif %}>{{ l }}</option>{% endfor %}<option value=""{% if not status %} selected{% endif %}>All</option></select></div>
+    <div class="f"><label for="method">Type</label><select id="method" name="method"><option value="">Weekly and instant</option>
+      <option value="scheduled"{% if f.method == "scheduled" %} selected{% endif %}>Weekly</option><option value="instant"{% if f.method == "instant" %} selected{% endif %}>Instant</option></select></div>
+    <div class="filters-actions"><button class="btn btn-secondary" type="submit">{% icon "search" 16 %} Search</button></div>
+  </form>
+  {% if page.object_list %}
+  <div class="table-wrap"><table class="table responsive">
+    <thead><tr><th>Driver / rider</th><th>Bank</th><th>Type</th><th class="right">Amount</th><th>Status</th><th>Created</th><th><span class="sr-only">Actions</span></th></tr></thead>
+    <tbody>
+    {% for p in page %}
+      <tr>
+        <td class="primary"><a href="{% url 'dashboard:provider_detail' p.provider.pk %}">{{ p.provider.user.full_name }}</a> {% service_tag p.provider.service %}<div class="cell-sub">{{ p.provider.user.phone }}</div></td>
+        <td>{{ p.bank_name }} · <span class="mono">{{ p.bank_account_number }}</span><div class="cell-sub">{{ p.bank_account_name }}</div></td>
+        <td>{% if p.method == "instant" %}Instant{% else %}Weekly{% endif %}</td>
+        <td class="right"><strong>{{ p.amount|naira }}</strong>{% if p.fee_amount %}<div class="cell-sub">fee {{ p.fee_amount|naira }}</div>{% endif %}</td>
+        <td>{% badge p.status %}{% if p.reference %}<div class="cell-sub mono">{{ p.reference }}</div>{% endif %}{% if p.failure_reason %}<div class="cell-sub">{{ p.failure_reason }}</div>{% endif %}{% if p.processed_by %}<div class="cell-sub">by {{ p.processed_by.full_name }}</div>{% endif %}</td>
+        <td class="nowrap">{{ p.created_at|date:"j M Y" }}</td>
+        <td class="actions">{% if p.status == "pending" or p.status == "processing" %}
+          <div class="row-actions"><button class="btn btn-secondary btn-sm" type="button" data-dialog="paid-{{ p.pk }}">{% icon "check" 14 %} Mark paid</button>
+            <details class="menu row-menu" data-align="end"><summary aria-label="More actions for this payout">{% icon "more" 18 %}</summary>
+              <div class="menu-panel" role="menu">
+                <a class="menu-item" role="menuitem" href="{% url 'dashboard:provider_detail' p.provider.pk %}?tab=earnings">{% icon "user" 16 %} View their earnings</a>
+                <div class="menu-sep"></div>
+                <button class="menu-item danger" role="menuitem" type="button" data-dialog="fail-{{ p.pk }}">{% icon "x" 16 %} Mark as failed…</button>
+              </div></details></div>
+          <dialog id="paid-{{ p.pk }}" class="modal" aria-labelledby="paid-{{ p.pk }}-t">
+            <form method="post" action="{% url 'dashboard:payout_action' p.pk 'paid' %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+              <div class="dialog-head"><h2 id="paid-{{ p.pk }}-t">Mark payout as paid</h2><button type="button" class="dialog-close" data-close aria-label="Close">{% icon "x" 18 %}</button></div>
+              <div class="dialog-main"><p>{{ p.amount|naira }} to {{ p.provider.user.full_name }} ({{ p.bank_name }} {{ p.bank_account_number }}). Only confirm after the transfer has gone through. They'll get a notification.</p>
+                <div class="field"><label for="ref-{{ p.pk }}">Bank transfer reference</label><input id="ref-{{ p.pk }}" type="text" name="reference" maxlength="80" placeholder="e.g. TRF-2026-0918-44821"></div></div>
+              <div class="dialog-foot"><button type="button" class="btn btn-ghost" data-close>Cancel</button><button class="btn btn-primary" type="submit">Confirm paid</button></div>
+            </form>
+          </dialog>
+          {% url 'dashboard:payout_action' p.pk 'failed' as fail_url %}
+          {% include "dashboard/partials/reason_dialog.html" with prefix="fail-" id=p.pk action=fail_url next=request.get_full_path heading="Mark payout as failed?" text="The money goes back to their balance so it's included next time. Ask them to check their bank details." placeholder="e.g. Account name doesn't match" button="Mark failed" danger=True %}
+        {% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% include "dashboard/partials/pager.html" %}
+  {% else %}{% include "dashboard/partials/empty.html" with title="No payouts here" text="Run weekly payouts to create them, or pick another status." icon="bank" %}{% endif %}
+</section>
+{% url 'dashboard:payout_run' as run_url %}
+{% include "dashboard/partials/reason_dialog.html" with id="run-payouts" action=run_url heading="Run weekly payouts?" text="Creates a pending payout for every driver and rider who is owed ₦1,000 or more and has bank details. Safe to run twice: the second run finds nothing new." button="Create payouts" reason="none" %}
+{% endif %}
+{% endblock %}

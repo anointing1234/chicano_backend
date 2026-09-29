@@ -1,0 +1,52 @@
+{% extends "dashboard/base.html" %}
+{# Ticket queue: urgent first, then the longest waiting. #}
+{% load dashboard_tags %}
+{% block title %}Support tickets{% endblock %}
+{% block panel %}customer{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Support tickets &amp; SOS</h1><p>Help requests from customers, drivers and riders in all four apps. Urgent first, then the ones waiting longest.</p></div></div>
+{% include "dashboard/support/tabs.html" %}
+<section class="card">
+  <form class="filters" method="get" data-autosubmit role="search">
+    <div class="f grow"><label for="q">Search</label><div class="search-field">{% icon "search" 16 %}<input id="q" type="search" name="q" value="{{ f.q|default:'' }}" placeholder="Subject, message text, name or phone"></div></div>
+    <div class="f"><label for="status">Status</label><select id="status" name="status">
+      <option value="open,pending"{% if status == "open,pending" %} selected{% endif %}>Needs attention</option>
+      <option value="open"{% if status == "open" %} selected{% endif %}>Open (waiting on us)</option>
+      <option value="pending"{% if status == "pending" %} selected{% endif %}>Waiting on the customer</option>
+      <option value="resolved,closed"{% if status == "resolved,closed" %} selected{% endif %}>Resolved or closed</option>
+      <option value=""{% if not status %} selected{% endif %}>All</option></select></div>
+    <div class="f"><label for="priority">Priority</label><select id="priority" name="priority"><option value="">Any</option>
+      <option value="urgent"{% if f.priority == "urgent" %} selected{% endif %}>Urgent</option><option value="high"{% if f.priority == "high" %} selected{% endif %}>High</option>
+      <option value="normal"{% if f.priority == "normal" %} selected{% endif %}>Normal</option><option value="low"{% if f.priority == "low" %} selected{% endif %}>Low</option></select></div>
+    <div class="f"><label for="category">Category</label><select id="category" name="category"><option value="">Any</option>
+      {% for v, l in categories %}<option value="{{ v }}"{% if f.category == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+    <div class="f"><label for="assigned">Owner</label><select id="assigned" name="assigned"><option value="">Anyone</option>
+      <option value="me"{% if f.assigned == "me" %} selected{% endif %}>Assigned to me</option><option value="none"{% if f.assigned == "none" %} selected{% endif %}>Unassigned</option></select></div>
+    <div class="filters-actions"><button class="btn btn-secondary" type="submit">{% icon "search" 16 %} Search</button>
+      {% filters_active "q" "priority" "category" "assigned" as filtered %}{% if filtered %}<a class="btn btn-ghost" href="?">Clear</a>{% endif %}</div>
+  </form>
+  {% if page.object_list %}
+  <div class="table-wrap"><table class="table responsive" data-bulk="bulk-tickets">
+    <thead><tr><th class="check"><input type="checkbox" aria-label="Select all tickets on this page"></th><th>Subject</th><th>From</th><th>Priority</th><th>Status</th><th>Owner</th><th>Updated</th><th><span class="sr-only">Actions</span></th></tr></thead>
+    <tbody>{% for t in page %}
+      <tr class="clickable" data-href="{% url 'dashboard:ticket_detail' t.pk %}">
+        <td class="check"><input type="checkbox" name="ids" value="{{ t.pk }}" form="bulk-tickets" aria-label="Select “{{ t.subject }}”"></td>
+        <td class="primary"><a href="{% url 'dashboard:ticket_detail' t.pk %}">{{ t.subject }}</a><div class="cell-sub">{{ t.get_category_display }}{% if t.ride_id %} · about a ride{% endif %}</div></td>
+        <td>{{ t.user.full_name }}<div class="cell-sub">{{ t.user.phone }}</div></td>
+        <td>{% badge t.priority %}</td><td>{% badge t.status %}</td>
+        <td>{{ t.assigned_to.full_name|default:"Unassigned" }}</td>
+        <td class="nowrap">{{ t.updated_at|ago }}</td>
+        <td class="actions"><a class="row-go" href="{% url 'dashboard:ticket_detail' t.pk %}" aria-label="Open ticket" data-tip="Open ticket">{% icon "chev-right" 18 %}</a></td>
+      </tr>{% endfor %}</tbody>
+  </table></div>
+  {% include "dashboard/partials/pager.html" %}
+  <form id="bulk-tickets" method="post" action="{% url 'dashboard:ticket_bulk' %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"></form>
+  <div class="bulkbar" id="bulk-tickets-bar" role="region" aria-label="Bulk actions">
+    <span class="count" aria-live="polite">0 selected</span>
+    <button class="btn btn-secondary btn-sm" type="submit" form="bulk-tickets" name="action" value="assign_me">{% icon "user" 14 %} Assign to me</button>
+    <button class="btn btn-secondary btn-sm" type="submit" form="bulk-tickets" name="action" value="resolve">{% icon "check" 14 %} Mark resolved</button>
+    <button class="btn btn-ghost btn-sm" type="button" data-bulk-clear>Clear</button>
+  </div>
+  {% else %}{% include "dashboard/partials/empty.html" with title="No tickets here" text="Nothing matches — or you're at inbox zero." clear_url="?" icon="lifebuoy" %}{% endif %}
+</section>
+{% endblock %}

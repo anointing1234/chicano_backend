@@ -1,0 +1,46 @@
+{% extends "dashboard/base.html" %}
+{# Lost items: reports from customers, linked to the ride and a support ticket; update status + notify. #}
+{% load dashboard_tags %}
+{% block title %}Lost items{% endblock %}
+{% block panel %}customer{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Lost items</h1><p>Things customers left in a car or on a bike. The driver/rider was notified when the report came in.</p></div></div>
+<section class="card">
+  <form class="filters" method="get" data-autosubmit role="search">
+    <div class="f grow"><label for="q">Search</label><div class="search-field">{% icon "search" 16 %}<input id="q" type="search" name="q" value="{{ f.q|default:'' }}" placeholder="Item, customer name or phone"></div></div>
+    <div class="f"><label for="status">Status</label><select id="status" name="status">
+      <option value="open"{% if status == "open" %} selected{% endif %}>Still open</option>
+      {% for v, l in statuses %}<option value="{{ v }}"{% if status == v %} selected{% endif %}>{{ l }}</option>{% endfor %}
+      <option value=""{% if not status %} selected{% endif %}>All</option></select></div>
+    <div class="filters-actions"><button class="btn btn-secondary" type="submit">{% icon "search" 16 %} Search</button></div>
+  </form>
+  {% if page.object_list %}
+  <div class="table-wrap"><table class="table responsive">
+    <thead><tr><th>Item</th><th>Customer</th><th>Driver / rider</th><th>Reported</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead>
+    <tbody>{% for r in page %}
+      <tr>
+        <td class="primary">{{ r.get_category_display }}<div class="cell-sub">{{ r.description }}</div></td>
+        <td><a href="{% url 'dashboard:user_detail' r.customer.pk %}">{{ r.customer.full_name }}</a><div class="cell-sub">Call: {{ r.contact_phone }}</div></td>
+        <td>{% if r.ride.provider %}<a href="{% url 'dashboard:provider_detail' r.ride.provider.pk %}">{{ r.ride.provider.user.full_name }}</a><div class="cell-sub">{{ r.ride.provider.user.phone }}</div>{% else %}—{% endif %}
+          <div class="cell-sub"><a href="{% url 'dashboard:trip_detail' r.ride.pk %}">Ride #{{ r.ride.pk|stringformat:"s"|slice:":8" }}</a></div></td>
+        <td class="nowrap">{{ r.created_at|ago }}</td>
+        <td>{% badge r.status %}</td>
+        <td class="actions"><div class="row-actions">{% if r.ticket %}<a class="btn btn-ghost btn-sm" href="{% url 'dashboard:ticket_detail' r.ticket.pk %}">Ticket</a>{% endif %}
+          <button class="btn btn-secondary btn-sm" type="button" data-dialog="lost-{{ r.pk }}">{% icon "edit" 14 %} Update</button></div>
+          <dialog id="lost-{{ r.pk }}" class="modal" aria-labelledby="lost-{{ r.pk }}-t">
+            <form method="post" action="{% url 'dashboard:lost_item_update' r.pk %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+              <div class="dialog-head"><h2 id="lost-{{ r.pk }}-t">Update lost {{ r.get_category_display|lower }}</h2><button type="button" class="dialog-close" data-close aria-label="Close">{% icon "x" 18 %}</button></div>
+              <div class="dialog-main">
+                <div class="field"><label for="ls-{{ r.pk }}">Status</label><select id="ls-{{ r.pk }}" name="status">{% for v, l in statuses %}<option value="{{ v }}"{% if r.status == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+                <div class="field"><label for="ln-{{ r.pk }}">Note <span class="muted">(optional)</span></label><textarea id="ln-{{ r.pk }}" name="note" rows="3" maxlength="500" placeholder="e.g. Driver has it. Handing over tomorrow 10am at Lekki Phase 1 gate."></textarea><span class="help">Added to the ticket.</span></div>
+                <div class="field check"><input type="checkbox" id="lc-{{ r.pk }}" name="notify_customer" checked><div><label for="lc-{{ r.pk }}">Send this update to the customer</label><span class="help">Push notification + in-app inbox.</span></div></div>
+              </div>
+              <div class="dialog-foot"><button type="button" class="btn btn-ghost" data-close>Cancel</button><button class="btn btn-primary" type="submit">Save update</button></div>
+            </form>
+          </dialog></td>
+      </tr>{% endfor %}</tbody>
+  </table></div>
+  {% include "dashboard/partials/pager.html" %}
+  {% else %}{% include "dashboard/partials/empty.html" with title="No lost items here" text="Reports from the User apps appear here." clear_url="?status=" icon="bag" %}{% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,13 @@
+{# Date range picker (Today / 7 days / 30 days / Custom). Needs `period` and `ranges` (access.get_period / RANGES). #}
+<form class="range" method="get" data-autosubmit>
+  {% for k, v in request.GET.items %}{% if k != "range" and k != "from" and k != "to" and k != "page" %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}{% endfor %}
+  <label class="sr-only" for="range-select">Date range</label>
+  <select id="range-select" name="range" style="width:auto">
+    {% for key, text in ranges %}<option value="{{ key }}"{% if period.key == key %} selected{% endif %}>{{ text }}</option>{% endfor %}
+  </select>
+  <span class="custom-range{% if period.key == 'custom' %} show{% endif %}">
+    <label class="sr-only" for="range-from">From</label><input id="range-from" type="date" name="from" value="{{ period.date_from|date:'Y-m-d' }}" style="width:auto">
+    <label class="sr-only" for="range-to">To</label><input id="range-to" type="date" name="to" value="{{ period.date_to|date:'Y-m-d' }}" style="width:auto">
+    <button class="btn btn-secondary btn-sm" type="submit">Apply</button>
+  </span>
+</form>

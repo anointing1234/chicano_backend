@@ -1,0 +1,41 @@
+{% extends "dashboard/base.html" %}
+{# Customers & Rides dashboard (orange panel): demand side — customers, rides, revenue, promos. #}
+{% load dashboard_tags %}
+{% block title %}Customer dashboard{% endblock %}
+{% block panel %}customer{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Customers &amp; rides</h1><p>People booking in the User app · Cars and User app · Bikes. {{ period.label }}.</p></div>
+  {% include "dashboard/dashboards/_toolbar.html" %}
+</div>
+{% url 'dashboard:customers' as cu %}{% url 'dashboard:trips' as tu %}{% url 'dashboard:payments' as pu %}{% url 'dashboard:promotions' as pru %}
+<div class="stats">
+  {% include "dashboard/partials/stat.html" with title="Registered customers" value=m.customers_total|num icon="people" desc="All-time customer accounts" href=cu link="Manage customers" %}
+  {% include "dashboard/partials/stat.html" with title="Active customers" value=m.active_customers|num icon="user" desc="Requested at least one ride in the period" delta=m.active_customers_delta %}
+  {% include "dashboard/partials/stat.html" with title="New sign-ups" value=m.new_customers|num icon="plus" desc="Customer accounts created in the period" delta=m.new_customers_delta %}
+  {% include "dashboard/partials/stat.html" with title="Rides in progress" value=m.rides_now|num icon="route" desc="Searching, accepted, arrived or on trip now" href=tu|add:"?status=searching,accepted,arrived,in_progress" link="See live rides" %}
+</div>
+<div class="stats">
+  {% include "dashboard/partials/stat.html" with title="Rides requested" value=m.rides_requested|num icon="list" desc="All bookings made in the period" delta=m.rides_requested_delta %}
+  {% include "dashboard/partials/stat.html" with title="Completed rides" value=m.rides_completed|num icon="check" desc="Trips finished in the period" delta=m.rides_completed_delta href=tu|add:"?status=completed" %}
+  {% include "dashboard/partials/stat.html" with title="Cancelled rides" value=m.rides_cancelled|num icon="alert" desc="Bookings cancelled by anyone" delta=m.rides_cancelled_delta bad_up=True href=tu|add:"?status=cancelled" %}
+  {% include "dashboard/partials/stat.html" with title="Gross bookings" value=m.gross|naira icon="money" desc="Paid for completed trips (after promos)" delta=m.gross_delta %}
+</div>
+<div class="stats">
+  {% include "dashboard/partials/stat.html" with title="Promo spend" value=m.promo_spend|naira icon="tag" desc="Discounts funded by Chicano Cruise" delta=m.promo_delta bad_up=True href=pru %}
+  {% include "dashboard/partials/stat.html" with title="Tips to drivers & riders" value=m.tips|naira icon="trophy" desc="100% passed on to them" %}
+  {% include "dashboard/partials/stat.html" with title="Failed payments" value=m.payments_failed|num icon="card" desc="Trips whose card/wallet charge failed (all time)" href=pu|add:"?tab=failed" alert=m.payments_failed %}
+  {% include "dashboard/partials/stat.html" with title="Phone not verified" value=m.unverified_phones|num icon="shield" desc="Customer accounts without a verified phone number" %}
+</div>
+<div class="grid grid-2">
+  <section class="card"><div class="card-head"><div><h2>Completed rides per day</h2><p>{{ period.label }}</p></div></div>
+    {% include "dashboard/partials/bar_chart.html" with series=m.chart_rides aria="Completed rides per day" %}</section>
+  <section class="card"><div class="card-head"><div><h2>New customers per day</h2><p>{{ period.label }}</p></div></div>
+    {% include "dashboard/partials/bar_chart.html" with series=m.chart_signups aria="New customers per day" %}</section>
+</div>
+<div class="grid grid-3">
+  <section class="card"><div class="card-head"><h2>Completed by ride type</h2></div>{% include "dashboard/partials/hbars.html" with rows=m.by_ride_type %}</section>
+  <section class="card"><div class="card-head"><h2>Revenue by payment method</h2></div>{% include "dashboard/partials/hbars.html" with rows=m.by_payment %}</section>
+  <section class="card"><div class="card-head"><h2>Who cancelled</h2></div>{% include "dashboard/partials/hbars.html" with rows=m.cancel_by %}</section>
+</div>
+{% endblock %}

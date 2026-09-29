@@ -1,0 +1,52 @@
+{% extends "dashboard/base.html" %}
+{# Applications & documents: pipeline counts + review queue (oldest pending first). #}
+{% load dashboard_tags %}
+{% block title %}Applications & documents{% endblock %}
+{% block panel %}driver{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Applications &amp; documents</h1><p>Review licences, insurance and registration. Approving the last document doesn't approve the driver — do that on their profile once the vehicle is checked.</p></div>
+  <div class="page-actions">{% include "dashboard/partials/service_switch.html" %}</div>
+</div>
+
+<section class="card">
+  <div class="card-head"><div><h2>Application pipeline</h2><p>Drivers and riders by stage</p></div></div>
+  <div class="chips" style="gap:8px">
+    {% for key, label, n in pipeline %}<a class="chip" style="padding:6px 10px;text-decoration:none" href="{% url 'dashboard:providers' %}?status={{ key }}">{{ label }} <strong class="num">{{ n|num }}</strong></a>{% endfor %}
+  </div>
+</section>
+
+<section class="card">
+  <form class="filters" method="get" data-autosubmit>
+    <div class="f"><label for="status">Show</label><select id="status" name="status">
+      <option value="pending"{% if status == "pending" %} selected{% endif %}>Waiting for review</option>
+      <option value="expiring"{% if status == "expiring" %} selected{% endif %}>Approved, expiring within 30 days</option>
+      <option value="approved"{% if status == "approved" %} selected{% endif %}>Approved</option>
+      <option value="rejected"{% if status == "rejected" %} selected{% endif %}>Rejected</option>
+      <option value="expired"{% if status == "expired" %} selected{% endif %}>Expired</option>
+      <option value="all"{% if status == "all" %} selected{% endif %}>All documents</option></select></div>
+    <div class="f"><label for="doc_type">Document type</label><select id="doc_type" name="doc_type"><option value="">Any document</option>
+      {% for v, l in doc_types %}<option value="{{ v }}"{% if doc_type == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+    <noscript><div class="filters-actions"><button class="btn btn-secondary" type="submit">Apply</button></div></noscript>
+  </form>
+  {% if page.object_list %}
+  <div class="table-wrap"><table class="table responsive">
+    <thead><tr><th>Document</th><th>Driver / rider</th><th>Expires</th><th>Uploaded</th><th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead>
+    <tbody>
+    {% for d in page %}
+      <tr class="clickable" data-href="{% url 'dashboard:document_review' d.pk %}">
+        <td class="primary"><a href="{% url 'dashboard:document_review' d.pk %}">{{ d.get_doc_type_display }}</a><div class="cell-sub">{{ d.number|default:"No number" }}</div></td>
+        <td><div class="cell-main">{{ d.provider.user.full_name }}</div><div class="cell-sub">{% service_tag d.provider.service %} {{ d.provider.user.phone }}</div></td>
+        <td class="nowrap">{{ d.expires_at|date:"j M Y"|default:"—" }}</td>
+        <td class="nowrap">{{ d.created_at|ago }}</td>
+        <td>{% badge d.status %}{% if d.rejection_reason %}<div class="cell-sub">{{ d.rejection_reason }}</div>{% endif %}</td>
+        <td class="actions"><a class="btn {% if d.status == 'pending' %}btn-primary{% else %}btn-secondary{% endif %} btn-sm" href="{% url 'dashboard:document_review' d.pk %}">{% if d.status == "pending" %}Review{% else %}Open{% endif %}</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% include "dashboard/partials/pager.html" %}
+  {% elif status == "pending" %}{% include "dashboard/partials/empty.html" with title="All caught up" text="No documents are waiting for review. New uploads appear here automatically." icon="check" %}
+  {% else %}{% include "dashboard/partials/empty.html" with title="No documents match" clear_url="?" icon="doc" %}{% endif %}
+</section>
+{% endblock %}

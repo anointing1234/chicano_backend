@@ -1,0 +1,12 @@
+{% comment %}
+  Metric card. Include with: title, value, icon, desc (what the number means), delta (percent vs previous
+  period or None), bad_up (True when a rise is bad, e.g. cancellations), href + link (optional), alert (bool).
+  Every card in a row is the same height; the optional link sits in a footer strip at the bottom.
+{% endcomment %}
+{% load dashboard_tags %}
+{% if href %}<a class="stat{% if alert %} stat-alert{% endif %}" href="{{ href }}">{% else %}<div class="stat{% if alert %} stat-alert{% endif %}">{% endif %}
+  <div class="stat-top"><span class="stat-title">{{ title }}</span><span class="stat-icon" aria-hidden="true">{% icon icon|default:"chart" 17 %}</span></div>
+  <div class="stat-value">{{ value }}</div>
+  <div class="stat-desc">{% if delta is not None %}{% delta_badge delta bad_up %}{% endif %}<span>{{ desc }}</span></div>
+  {% if href %}<span class="stat-spacer"></span><span class="stat-link">{{ link|default:"View details" }} {% icon "arrow" 14 %}</span>{% endif %}
+{% if href %}</a>{% else %}</div>{% endif %}

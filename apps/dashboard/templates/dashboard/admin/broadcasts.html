@@ -1,0 +1,50 @@
+{% extends "dashboard/base.html" %}
+{# Broadcasts: push + inbox message to a whole audience, with live preview, confirmation and history. #}
+{% load static dashboard_tags %}
+{% block title %}Broadcasts{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Broadcasts</h1><p>Send a push notification and in-app message to a whole group. Use sparingly — every message reaches real phones.</p></div></div>
+<div class="grid grid-main">
+  <form class="form" method="post" novalidate data-confirm="Send this message now? It can't be recalled.">
+    {% csrf_token %}{{ form.token }}
+    <fieldset class="form-section">
+      <legend>Audience</legend>
+      <p class="section-help">Counts are live. Suspended and banned accounts are never included.</p>
+      <div class="field{% if form.audience.errors %} has-error{% endif %}">
+        <div class="checks">{% for radio in form.audience %}<label>{{ radio.tag }} {{ radio.choice_label }}</label>{% endfor %}</div>
+        {% for e in form.audience.errors %}<span class="error">{{ e }}</span>{% endfor %}
+      </div>
+    </fieldset>
+    <fieldset class="form-section">
+      <legend>Message</legend>
+      {% for field in form %}{% if field.name == "title" or field.name == "body" %}
+        <div class="field{% if field.errors %} has-error{% endif %}">
+          <label for="{{ field.id_for_label }}">{{ field.label }}<span class="req" aria-hidden="true">*</span></label>{{ field }}
+          <span class="help">{{ field.help_text }}</span>{% for e in field.errors %}<span class="error">{{ e }}</span>{% endfor %}
+        </div>
+      {% endif %}{% endfor %}
+      <div class="field check{% if form.confirm.errors %} has-error{% endif %}">{{ form.confirm }}<div><label for="{{ form.confirm.id_for_label }}">{{ form.confirm.label }}</label>
+        {% for e in form.confirm.errors %}<span class="error">{{ e }}</span>{% endfor %}</div></div>
+    </fieldset>
+    <div class="form-actions"><button class="btn btn-primary" type="submit">{% icon "megaphone" 16 %} Send broadcast</button></div>
+  </form>
+  <div>
+    <section class="card">
+      <div class="card-head"><h2>Preview</h2></div>
+      <div class="notif-preview" aria-live="polite">
+        <span class="app-icon"><img src="{% static 'dashboard/favicon.svg' %}" width="24" height="24" alt=""></span>
+        <div><strong id="pv-title">Your title</strong><span id="pv-body" class="small">Your message appears here.</span></div>
+      </div>
+      <p class="small muted" style="margin-top:10px">How it looks as a push notification on a phone.</p>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Recent broadcasts</h2></div>
+      {% for h in history %}
+        <div class="list-row"><div><div class="cell-main">{{ h.data.title }}</div><div class="cell-sub">{{ h.data.body|truncatechars:80 }}</div>
+          <div class="cell-sub">{{ h.created_at|date:"j M, H:i" }} · {{ h.actor.full_name }} · {{ h.data.audience|label }}</div></div>
+          <div class="right small num"><strong>{{ h.data.recipients|num }}</strong> people<div class="muted">{{ h.data.push_sent|num }} pushed{% if h.data.push_failed %} · <span class="neg">{{ h.data.push_failed }} failed</span>{% endif %}</div></div></div>
+      {% empty %}<p class="muted small">Nothing sent yet.</p>{% endfor %}
+    </section>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,7 @@
+{% extends "dashboard/base.html" %}
+{# Shown when a staff member opens a page their role can't use (roles: apps/core/roles.py). #}
+{% block content %}
+  <div class="page-header"><div><h1>Not available for your role</h1>
+    <p class="muted">Your role ({{ request.user.staff_role }}) can't open this page. Ask a super admin if you need access.</p></div></div>
+  <a class="btn btn-secondary" href="{% url 'dashboard:overview' %}">Back to Overview</a>
+{% endblock %}

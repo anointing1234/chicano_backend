@@ -1,0 +1,56 @@
+{% extends "dashboard/base.html" %}
+{# Manage drivers (cars) & riders (bikes). Filters, sorting and paging all run on the server. #}
+{% load dashboard_tags %}
+{% block title %}Manage drivers & riders{% endblock %}
+{% block panel %}driver{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Manage drivers &amp; riders</h1><p>Drivers use the Driver app (cars); riders use the Rider app (bikes).</p></div>
+  <div class="page-actions">{% include "dashboard/partials/service_switch.html" %}
+    {% if can.providers_approve %}<a class="btn btn-primary" href="{% url 'dashboard:documents' %}">{% icon "doc" 16 %} Review documents</a>{% endif %}</div>
+</div>
+<section class="card">
+  <form class="filters" method="get" data-autosubmit role="search">
+    <div class="f grow"><label for="q">Search</label><div class="search-field">{% icon "search" 16 %}<input id="q" type="search" name="q" value="{{ f.q|default:'' }}" placeholder="Name, phone, email or plate number"></div></div>
+    <div class="f"><label for="status">Approval status</label><select id="status" name="status"><option value="">Any status</option>
+      {% for v, l in statuses %}<option value="{{ v }}"{% if f.status == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+    <div class="f"><label for="online">Availability</label><select id="online" name="online"><option value="">Online or offline</option>
+      <option value="yes"{% if f.online == "yes" %} selected{% endif %}>Online now</option><option value="no"{% if f.online == "no" %} selected{% endif %}>Offline</option></select></div>
+    {% if cities|length > 1 %}<div class="f"><label for="city">City</label><select id="city" name="city"><option value="">All cities</option>
+      {% for c in cities %}<option value="{{ c }}"{% if f.city == c %} selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>{% endif %}
+    <div class="f"><label for="docs">Documents</label><select id="docs" name="docs"><option value="">Any</option>
+      <option value="pending"{% if f.docs == "pending" %} selected{% endif %}>Waiting for review</option>
+      <option value="expiring"{% if f.docs == "expiring" %} selected{% endif %}>Expiring within 30 days</option></select></div>
+    {% if sort %}<input type="hidden" name="sort" value="{{ sort }}">{% endif %}
+    <div class="filters-actions"><button class="btn btn-secondary" type="submit">{% icon "search" 16 %} Search</button>
+      {% filters_active "q" "status" "online" "city" "docs" as filtered %}{% if filtered %}<a class="btn btn-ghost" href="?">Clear</a>{% endif %}</div>
+  </form>
+  {% if page.object_list %}
+  <div class="table-wrap"><table class="table responsive">
+    <thead><tr>{% sort_th "name" "Name" %}<th>Type</th><th>Vehicle</th>{% sort_th "status" "Status" %}<th>Availability</th>{% sort_th "rating" "Rating" "right" %}{% sort_th "trips" "Trips" "right" %}<th class="right">Acceptance</th>{% sort_th "joined" "Applied" %}<th><span class="sr-only">Actions</span></th></tr></thead>
+    <tbody>
+    {% for p in page %}
+      <tr class="clickable" data-href="{% url 'dashboard:provider_detail' p.pk %}">
+        <td class="primary"><div class="person"><span class="avatar" aria-hidden="true">{{ p.user.full_name|initials }}</span>
+          <div><a href="{% url 'dashboard:provider_detail' p.pk %}">{{ p.user.full_name|default:"No name yet" }}</a><div class="cell-sub">{{ p.user.phone }} · {{ p.city }}</div></div></div></td>
+        <td>{% service_tag p.service %}</td>
+        <td>{% for v in p.vehicles.all %}{% if v.is_active %}{{ v.make }} {{ v.model }}<div class="cell-sub mono">{{ v.plate_number }}</div>{% endif %}{% empty %}<span class="muted">None yet</span>{% endfor %}</td>
+        <td><div class="chips">{% badge p.status %}{% if p.docs_pending %}<span class="chip warn">{{ p.docs_pending }} doc{{ p.docs_pending|pluralize }} to review</span>{% endif %}{% if p.docs_expiring %}<span class="chip bad">doc expiring</span>{% endif %}</div></td>
+        <td>{% if p.is_online %}{% badge "online" "Online" %}{% else %}<span class="muted">Offline</span>{% endif %}</td>
+        <td class="right">★ {{ p.rating_avg }}</td>
+        <td class="right">{{ p.total_trips|num }}</td>
+        <td class="right">{{ p.acceptance_rate|pct }}</td>
+        <td class="nowrap">{{ p.created_at|date:"j M Y" }}</td>
+        <td class="actions"><a class="row-go" href="{% url 'dashboard:provider_detail' p.pk %}" aria-label="View details" data-tip="View details">{% icon "chev-right" 18 %}</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% include "dashboard/partials/pager.html" %}
+  {% else %}
+    {% filters_active "q" "status" "online" "city" "docs" as filtered %}
+    {% if filtered %}{% include "dashboard/partials/empty.html" with title="No drivers or riders match these filters" text="Try another name, phone or plate number, or clear the filters." clear_url="?" icon="wheel" %}
+    {% else %}{% include "dashboard/partials/empty.html" with title="No drivers or riders yet" text="They appear here after applying in the Driver app or Rider app." icon="wheel" %}{% endif %}
+  {% endif %}
+</section>
+{% endblock %}

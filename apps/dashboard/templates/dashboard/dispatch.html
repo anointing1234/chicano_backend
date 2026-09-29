@@ -1,0 +1,79 @@
+{% extends "dashboard/base.html" %}
+{# Live map & dispatch: map (10 s refresh), waiting rides (5 s refresh), nearest candidates, manual assignment. #}
+{% load static dashboard_tags %}
+{% block title %}Live map & dispatch{% endblock %}
+{% block head %}<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Live map &amp; dispatch</h1><p>Rides still looking for a driver or rider. “Needs you” = 3 offers missed or nobody nearby. Pick a ride to see who's closest.</p></div>
+  <div class="page-actions">{% include "dashboard/partials/service_switch.html" %}</div>
+</div>
+
+<div class="grid grid-main">
+  <section class="card">
+    <div class="map-toolbar">
+      <label class="sr-only" for="map-status">Driver status</label>
+      <select id="map-status" data-map-filter="status"><option value="">All drivers &amp; riders</option><option value="available">Available only</option><option value="on_trip">On a trip only</option></select>
+      {% if cities|length > 1 %}<label class="sr-only" for="map-city">City</label>
+      <select id="map-city" data-map-filter="city"><option value="">All cities</option>{% for c in cities %}<option value="{{ c }}">{{ c }}</option>{% endfor %}</select>{% endif %}
+      <span class="small muted" data-map-count>Loading…</span>
+    </div>
+    <div class="map-shell">
+      <div class="map tall skeleton" data-live-map="{% url 'dashboard:live_data' %}" data-every="10000" role="region" aria-label="Live map of drivers, riders and waiting rides"></div>
+      <div class="map-panel" data-map-panel hidden></div>
+    </div>
+    <div class="map-legend"><span><i class="car"></i>Driver available</span><span><i class="bike"></i>Rider available</span><span><i class="busy"></i>On a trip</span><span><i class="ride"></i>Waiting ride</span></div>
+  </section>
+
+  <div>
+    <section class="card">
+      <div class="card-head"><div><h2>Waiting rides</h2><p>Updates every 5 seconds</p></div></div>
+      <div data-poll="{% url 'dashboard:dispatch' %}{% if selected %}?ride={{ selected.pk }}{% endif %}" data-every="5000">{% include "dashboard/partials/dispatch_queue.html" %}</div>
+    </section>
+
+    {% if selected %}
+    <section class="card" id="assign">
+      <div class="card-head"><div><h2>Assign this ride</h2><p>{% service_tag selected.service %} {{ selected.ride_type.name }} · {{ selected.customer.full_name }}</p></div>
+        <a class="btn btn-ghost btn-sm" href="{% url 'dashboard:trip_detail' selected.pk %}">Ride details</a></div>
+      <p class="small">{{ selected.pickup_address }} <span class="muted">→ {{ selected.dropoff_address }}</span></p>
+      {% if selected.status != "searching" %}
+        <div class="alert alert-info">{% icon "check" 18 %}<span>This ride is now <strong>{{ selected.get_status_display }}</strong>{% if selected.provider %} with {{ selected.provider.user.full_name }}{% endif %}. Nothing to assign.</span></div>
+      {% else %}
+        {% if pending_offer %}<div class="alert alert-warning">{% icon "clock" 18 %}<span>Waiting for {{ pending_offer.provider.user.full_name }} to answer (offer expires {{ pending_offer.expires_at|date:"H:i:s" }}). Sending a new offer withdraws that one.</span></div>{% endif %}
+        {% for c in candidates %}
+          <div class="list-row">
+            <div><div class="cell-main">{{ c.user.full_name }} <span class="cell-sub">{{ c.user.phone }}</span></div>
+              <div class="cell-sub">{{ c.distance_km }} km away · ★ {{ c.rating_avg }} · {{ c.acceptance_rate|pct }} acceptance{% if c.active_vehicle %} · {{ c.active_vehicle.make }} {{ c.active_vehicle.model }} <span class="mono">{{ c.active_vehicle.plate_number }}</span>{% endif %}</div></div>
+            <form method="post" action="{% url 'dashboard:dispatch_assign' selected.pk %}" data-confirm="Send this ride to {{ c.user.full_name }}? They get 60 seconds to accept.">{% csrf_token %}
+              <input type="hidden" name="provider_id" value="{{ c.pk }}"><button class="btn btn-primary btn-sm" type="submit">Send offer</button></form>
+          </div>
+        {% empty %}
+          {% if wide %}
+          {% include "dashboard/partials/empty.html" with title="Nobody eligible within 25 km" text="Eligible = online, approved, free, right vehicle type and not already asked. Try again in a minute, or cancel the ride and let the customer know." icon="radar" %}
+          {% else %}
+          {% include "dashboard/partials/empty.html" with title="Nobody eligible within 5 km" text="Eligible = online, approved, free, right vehicle type and not already asked." icon="radar" action_url=wide_url action_label="Search up to 25 km" %}
+          {% endif %}
+        {% endfor %}
+      {% endif %}
+    </section>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+  // Map filters: rebuild the data URL used by livemap.js (it re-reads the attribute on every refresh).
+  document.querySelectorAll("[data-map-filter]").forEach(function (sel) {
+    sel.addEventListener("change", function () {
+      var map = document.querySelector("[data-live-map]");
+      var url = new URL(map.getAttribute("data-live-map"), location.href);
+      url.searchParams.set(sel.dataset.mapFilter, sel.value);
+      if (!sel.value) url.searchParams.delete(sel.dataset.mapFilter);
+      map.setAttribute("data-live-map", url.pathname + url.search);
+      map.dispatchEvent(new Event("refresh"));
+    });
+  });
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" defer></script>
+<script src="{% static 'dashboard/livemap.js' %}?v=4" defer></script>
+{% endblock %}

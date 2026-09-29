@@ -1,0 +1,20 @@
+{% extends "dashboard/base.html" %}
+{# SOS alerts (refresh every 5 s): acknowledge sends "Safety team is on it"; resolve with notes. #}
+{% block title %}SOS alerts{% endblock %}
+{% block panel %}customer{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Support tickets &amp; SOS</h1><p>Emergency alerts from customers, drivers and riders. Call the person immediately.</p></div></div>
+{% include "dashboard/support/tabs.html" %}
+<section class="card">
+  <form class="filters" method="get" data-autosubmit>
+    <input type="hidden" name="tab" value="sos">
+    <div class="f"><label for="status">Show</label><select id="status" name="status">
+      <option value="active"{% if status == "active" %} selected{% endif %}>Active (open + acknowledged)</option>
+      <option value="open"{% if status == "open" %} selected{% endif %}>Open only</option>
+      <option value="resolved"{% if status == "resolved" %} selected{% endif %}>Resolved</option>
+      <option value="all"{% if status == "all" %} selected{% endif %}>All</option></select></div>
+    <p class="small muted" style="margin:0 0 10px">Updates every 5 seconds.</p>
+  </form>
+  <div data-poll="{% url 'dashboard:support' %}?tab=sos&status={{ status }}" data-every="5000">{% include "dashboard/partials/sos_table.html" %}</div>
+</section>
+{% endblock %}

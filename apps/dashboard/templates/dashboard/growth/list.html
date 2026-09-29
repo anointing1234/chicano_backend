@@ -1,0 +1,53 @@
+{% extends "dashboard/base.html" %}
+{# Promotions: promo codes (customers) and incentives (drivers/riders). Click a row to edit. #}
+{% load dashboard_tags %}
+{% block content %}
+  <div class="page-header">
+    <div><h1>Promotions</h1><p class="muted">Discounts for customers and trip bonuses for drivers and riders.</p></div>
+    <div class="page-actions">
+      {% if tab == "incentives" %}<a class="btn btn-primary" href="{% url 'dashboard:incentive_new' %}">New incentive</a>
+      {% else %}<a class="btn btn-primary" href="{% url 'dashboard:promo_new' %}">New promo code</a>{% endif %}
+    </div>
+  </div>
+  <nav class="tabs">
+    <a class="tab{% if tab != 'incentives' %} active{% endif %}" href="?tab=promos">Promo codes</a>
+    <a class="tab{% if tab == 'incentives' %} active{% endif %}" href="?tab=incentives">Driver &amp; rider incentives</a>
+  </nav>
+  <section class="card">
+    {% if page.object_list %}
+    <div class="table-wrap"><table class="table">
+      {% if tab == "incentives" %}
+        <thead><tr><th>Name</th><th>For</th><th class="right">Target</th><th class="right">Reward</th><th>Runs</th><th>Status</th></tr></thead>
+        <tbody>
+        {% for i in page %}
+          <tr class="clickable" data-href="{% url 'dashboard:incentive_edit' i.pk %}">
+            <td><a href="{% url 'dashboard:incentive_edit' i.pk %}"><strong>{{ i.name }}</strong></a><div class="muted small">{{ i.description }}</div></td>
+            <td>{% service_tag i.service %}</td>
+            <td class="right">{{ i.target_trips }} trips</td>
+            <td class="right">{{ i.reward_amount|naira }}</td>
+            <td>{{ i.starts_at|date:"j M" }} – {{ i.ends_at|date:"j M Y" }}</td>
+            <td>{% if i.is_active and i.ends_at > now %}{% badge "active" %}{% else %}{% badge "inactive" "Off / ended" %}{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      {% else %}
+        <thead><tr><th>Code</th><th>For</th><th>Discount</th><th class="right">Used</th><th class="right">Spent</th><th>Valid</th><th>Status</th></tr></thead>
+        <tbody>
+        {% for p in page %}
+          <tr class="clickable" data-href="{% url 'dashboard:promo_edit' p.pk %}">
+            <td><a href="{% url 'dashboard:promo_edit' p.pk %}"><strong class="mono">{{ p.code }}</strong></a><div class="muted small">{{ p.description }}</div></td>
+            <td>{% if p.service %}{% service_tag p.service %}{% else %}<span class="small">Cars + bikes</span>{% endif %}</td>
+            <td>{% if p.discount_type == "percent" %}{{ p.value }}%{% if p.max_discount_amount %} (max {{ p.max_discount_amount|naira }}){% endif %}{% else %}{{ p.value|naira }}{% endif %}</td>
+            <td class="right">{{ p.redemptions_count }}{% if p.usage_limit %} / {{ p.usage_limit }}{% endif %}</td>
+            <td class="right">{{ p.spent_amount|naira }}{% if p.budget_amount %} / {{ p.budget_amount|naira }}{% endif %}</td>
+            <td>{{ p.valid_from|date:"j M" }} – {{ p.valid_to|date:"j M Y" }}</td>
+            <td>{% if p.is_active and p.valid_to > now %}{% badge "active" %}{% else %}{% badge "inactive" "Off / ended" %}{% endif %}</td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      {% endif %}
+    </table></div>
+    {% include "dashboard/partials/pager.html" %}
+    {% else %}<div class="empty"><div class="empty-title">Nothing here yet</div></div>{% endif %}
+  </section>
+{% endblock %}

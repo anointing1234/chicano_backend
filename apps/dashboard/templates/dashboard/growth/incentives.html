@@ -1,0 +1,29 @@
+{% extends "dashboard/base.html" %}
+{# Driver & rider incentives: trip-count bonuses. #}
+{% load dashboard_tags %}
+{% block title %}Driver incentives{% endblock %}
+{% block panel %}driver{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Driver &amp; rider incentives</h1><p>Complete X trips in a time window, earn a bonus on their balance.</p></div>
+  <div class="page-actions">{% include "dashboard/partials/service_switch.html" %}<a class="btn btn-primary" href="{% url 'dashboard:incentive_new' %}">{% icon "plus" 16 %} New incentive</a></div>
+</div>
+<section class="card">
+  <form class="filters" method="get" data-autosubmit>{% include "dashboard/growth/_state_filter.html" %}<noscript><button class="btn btn-secondary">Apply</button></noscript></form>
+  {% if page.object_list %}
+  <div class="table-wrap"><table class="table responsive">
+    <thead><tr>{% sort_th "name" "Name" %}<th>For</th><th class="right">Target</th>{% sort_th "reward" "Reward" "right" %}<th class="right">Awarded</th>{% sort_th "ends" "Runs" %}<th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead>
+    <tbody>{% for i in page %}
+      <tr class="clickable" data-href="{% url 'dashboard:incentive_edit' i.pk %}">
+        <td class="primary"><a href="{% url 'dashboard:incentive_edit' i.pk %}">{{ i.name }}</a><div class="cell-sub">{{ i.description }}</div></td>
+        <td>{% service_tag i.service %}</td><td class="right">{{ i.target_trips|num }} trips</td><td class="right">{{ i.reward_amount|naira }}</td>
+        <td class="right">{{ i.award_count|num }}</td>
+        <td class="nowrap">{{ i.starts_at|date:"j M" }} – {{ i.ends_at|date:"j M Y" }}</td>
+        <td>{% if not i.is_active %}{% badge "inactive" "Switched off" %}{% elif i.ends_at <= now %}{% badge "expired" "Ended" %}{% elif i.starts_at > now %}{% badge "scheduled" "Scheduled" %}{% else %}{% badge "active" "Live" %}{% endif %}</td>
+        <td class="actions"><a class="btn btn-ghost btn-sm" href="{% url 'dashboard:incentive_edit' i.pk %}">{% icon "edit" 14 %} Edit</a></td>
+      </tr>{% endfor %}</tbody>
+  </table></div>
+  {% include "dashboard/partials/pager.html" %}
+  {% else %}{% url 'dashboard:incentive_new' as new_url %}{% include "dashboard/partials/empty.html" with title="No incentives here" text="Bonuses help you get more drivers and riders online at busy times." action_url=new_url action_label="New incentive" icon="trophy" %}{% endif %}
+</section>
+{% endblock %}

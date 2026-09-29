@@ -1,0 +1,139 @@
+{% extends "dashboard/base.html" %}
+{# One driver/rider: application tracker, documents, vehicle, trips, earnings; approve / reject / suspend / reinstate. #}
+{% load dashboard_tags %}
+{% block title %}{{ p.user.full_name|default:p.user.phone }}{% endblock %}
+{% block panel %}driver{% endblock %}
+{% block crumbs %}<li><a href="{% url 'dashboard:providers' %}">Drivers &amp; riders</a></li><li aria-current="page">{{ p.user.full_name|default:p.user.phone }}</li>{% endblock %}
+{% block heading %}{{ p.user.full_name|default:p.user.phone }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div class="profile-head">
+    <span class="avatar" aria-hidden="true">{{ p.user.full_name|initials }}</span>
+    <div><h1>{{ p.user.full_name|default:"No name yet" }} {% service_tag p.service %}</h1>
+      <p>{{ p.kind|capfirst }} · {{ p.user.phone }}{% if p.user.email %} · {{ p.user.email }}{% endif %} · {{ p.city }}</p>
+      <div class="chips">{% badge p.status %}{% if p.is_online %}{% badge "online" "Online now" %}{% else %}<span class="chip">Offline</span>{% endif %}</div></div>
+  </div>
+  <div class="page-actions">
+    {% if can.providers_approve and p.status != "approved" and p.status != "suspended" %}
+      <button class="btn btn-ghost" type="button" data-dialog="reject">Reject application</button>
+      <button class="btn btn-primary" type="button" data-dialog="approve">{% icon "check" 16 %} Approve {{ p.kind }}</button>
+    {% endif %}
+    {% if can.providers_suspend and p.status == "approved" %}<button class="btn btn-danger" type="button" data-dialog="suspend">Suspend</button>{% endif %}
+    {% if can.providers_suspend %}{% if p.status == "suspended" or p.status == "rejected" %}<button class="btn btn-primary" type="button" data-dialog="reinstate">Reinstate</button>{% endif %}{% endif %}
+    <a class="btn btn-secondary" href="{% url 'dashboard:user_detail' p.user.pk %}">User account</a>
+  </div>
+</div>
+
+{% if p.status_reason %}<div class="alert alert-warning" role="status">{% icon "alert" 18 %}<span>{{ p.get_status_display }}: {{ p.status_reason }}</span></div>{% endif %}
+
+<section class="card">
+  <div class="card-head"><div><h2>Application progress</h2><p>{{ checklist.steps_done }} of {{ checklist.steps_total }} steps done{% if p.approved_at %} · approved {{ p.approved_at|date:"j M Y" }}{% if p.approved_by %} by {{ p.approved_by.full_name }}{% endif %}{% endif %}</p></div></div>
+  <ol class="stepper" style="--steps: {{ checklist.steps_total }}">
+    {% for s in checklist.steps %}<li class="{{ s.state }}">{{ s.title }}<span class="state">{{ s.state|label }}</span></li>{% endfor %}
+  </ol>
+</section>
+
+<div class="stats">
+  {% include "dashboard/partials/stat.html" with title="Trips completed" value=p.total_trips|num icon="check" desc="All time" %}
+  {% if p.rating_count %}{% include "dashboard/partials/stat.html" with title="Rating" value=p.rating_avg icon="trophy" desc=p.rating_count|num|stringformat:"s"|add:" ratings from customers" %}
+  {% else %}{% include "dashboard/partials/stat.html" with title="Rating" value="—" icon="trophy" desc="No ratings yet" %}{% endif %}
+  {% if p.total_trips %}{% include "dashboard/partials/stat.html" with title="Acceptance · cancellation" value=p.acceptance_rate|pct icon="gauge" desc=p.cancellation_rate|pct|add:" of accepted trips cancelled" %}
+  {% else %}{% include "dashboard/partials/stat.html" with title="Acceptance · cancellation" value="—" icon="gauge" desc="No trips yet" %}{% endif %}
+  {% include "dashboard/partials/stat.html" with title="Balance" value=balance|naira icon="bank" desc=balance_desc|default:"What we owe them (negative = owes commission on cash trips)" alert=balance_negative %}
+</div>
+
+<nav class="tabs" aria-label="Driver sections">
+  <a class="tab{% if tab == 'application' %} active{% endif %}" href="?tab=application">Documents &amp; vehicle</a>
+  <a class="tab{% if tab == 'trips' %} active{% endif %}" href="?tab=trips">Trips</a>
+  <a class="tab{% if tab == 'earnings' %} active{% endif %}" href="?tab=earnings">Earnings &amp; payouts</a>
+  <a class="tab{% if tab == 'details' %} active{% endif %}" href="?tab=details">Details</a>
+</nav>
+
+{% if tab == "trips" %}
+  <section class="card">{% include "dashboard/partials/ride_rows.html" with rides=trips empty_title="No trips yet" %}</section>
+
+{% elif tab == "earnings" %}
+  <div class="stats">
+    {% include "dashboard/partials/stat.html" with title="Trips this month" value=month.trips|num icon="route" desc="Completed since the 1st" %}
+    {% include "dashboard/partials/stat.html" with title="Fares this month" value=month.fares_amount|naira icon="money" desc="Before commission" %}
+    {% include "dashboard/partials/stat.html" with title="Commission this month" value=month.commission_amount|naira icon="bank" desc="Kept by the platform" %}
+    {% include "dashboard/partials/stat.html" with title="Net this month" value=month.net_amount|naira icon="check" desc="Fares + tips + bonuses − commission" %}
+  </div>
+  <div class="grid grid-2">
+    <section class="card"><div class="card-head"><h2>Recent ledger entries</h2></div>
+      {% if ledger %}<div class="table-wrap"><table class="table responsive">
+        <thead><tr><th>Date</th><th>Entry</th><th class="right">Amount</th></tr></thead>
+        <tbody>{% for e in ledger %}<tr><td class="primary">{{ e.created_at|date:"j M, H:i" }}</td><td>{{ e.get_kind_display }}{% if e.note %}<div class="cell-sub">{{ e.note }}</div>{% endif %}</td>
+          <td class="right {% if e.amount < 0 %}neg{% endif %}">{{ e.amount|naira:True }}</td></tr>{% endfor %}</tbody></table></div>
+      {% else %}{% include "dashboard/partials/empty.html" with title="No earnings yet" icon="money" %}{% endif %}</section>
+    <section class="card"><div class="card-head"><h2>Payouts</h2>{% if can.payouts %}<a class="btn btn-ghost btn-sm" href="{% url 'dashboard:payouts' %}?q={{ p.user.phone|urlencode }}&status=">All payouts</a>{% endif %}</div>
+      {% if payouts %}<ul class="list">{% for po in payouts %}<li class="list-row"><div><div class="cell-main">{{ po.amount|naira }}</div><div class="cell-sub">{{ po.created_at|date:"j M Y" }} · {% if po.method == "instant" %}Instant{% else %}Weekly{% endif %}{% if po.reference %} · {{ po.reference }}{% endif %}</div></div>{% badge po.status %}</li>{% endfor %}</ul>
+      {% else %}{% include "dashboard/partials/empty.html" with title="No payouts yet" icon="bank" %}{% endif %}</section>
+  </div>
+
+{% elif tab == "details" %}
+  <section class="card">
+    <dl class="kv">
+      <div><dt>Date of birth</dt><dd>{{ p.date_of_birth|date:"j M Y"|default:"—" }}</dd></div>
+      <div><dt>City</dt><dd>{{ p.city }}</dd></div>
+      <div><dt>Bank account</dt><dd>{% if p.bank_account_number %}{{ p.bank_name }} · {{ p.bank_account_number }} · {{ p.bank_account_name }}{% else %}<span class="chip warn">Not added — payouts can't be sent</span>{% endif %}</dd></div>
+      <div><dt>Last GPS position</dt><dd>{% if p.last_location_at %}{{ p.last_lat }}, {{ p.last_lng }} · {{ p.last_location_at|ago }}{% else %}—{% endif %}</dd></div>
+      <div><dt>Offers received / accepted</dt><dd class="num">{{ p.offers_received|num }} / {{ p.offers_accepted|num }}</dd></div>
+      <div><dt>Trips cancelled by them</dt><dd class="num">{{ p.trips_cancelled|num }}</dd></div>
+      <div><dt>Applied</dt><dd>{{ p.created_at|date:"j M Y, H:i" }}</dd></div>
+    </dl>
+  </section>
+
+{% else %}
+<div class="grid grid-2">
+  <section class="card">
+    <div class="card-head"><div><h2>Documents</h2><p>Required: licence, insurance, registration</p></div></div>
+    {% for d in documents %}
+      <div class="list-row">
+        <div>
+          <div class="cell-main">{{ d.get_doc_type_display }}</div>
+          <div class="cell-sub">{{ d.number|default:"No number" }} · {% if d.is_expired %}<span class="neg">expired {{ d.expires_at|date:"j M Y" }}</span>{% elif d.expiring %}<span class="neg">expires {{ d.expires_at|date:"j M Y" }}</span>{% else %}expires {{ d.expires_at|date:"j M Y"|default:"—" }}{% endif %}</div>
+          {% if d.rejection_reason %}<div class="cell-sub">“{{ d.rejection_reason }}”</div>{% endif %}
+          <div class="chips" style="margin-top:6px">{% badge d.status %}<a class="chip" href="{% url 'dashboard:document_file' d.pk %}" target="_blank" rel="noopener">View file</a></div>
+        </div>
+        {% if can.providers_approve and d.status == "pending" %}<a class="btn btn-primary btn-sm" href="{% url 'dashboard:document_review' d.pk %}">Review</a>{% endif %}
+      </div>
+    {% empty %}{% include "dashboard/partials/empty.html" with title="Nothing uploaded yet" text="They upload documents from the app during onboarding." icon="doc" %}{% endfor %}
+  </section>
+  <section class="card">
+    <div class="card-head"><h2>{% if p.service == "car" %}Car{% else %}Bike{% endif %}</h2></div>
+    {% for v in vehicles %}
+      <div class="list-row">
+        <div>
+          <div class="cell-main">{{ v.color }} {{ v.make }} {{ v.model }} ({{ v.year }})</div>
+          <div class="cell-sub mono">{{ v.plate_number }}</div>
+          <div class="cell-sub">{{ v.seats }} seat{{ v.seats|pluralize }}{% if v.kind == "bike" %} · rider helmet {{ v.has_rider_helmet|yesno:"✓,✗" }} · passenger helmet {{ v.has_passenger_helmet|yesno:"✓,✗" }}{% endif %}</div>
+          <div class="chips" style="margin-top:6px">{% badge v.status %}{% if v.is_active %}<span class="chip">In use</span>{% endif %}{% for t in v.ride_types.all %}<span class="chip">{{ t.name }}</span>{% endfor %}</div>
+        </div>
+        {% if can.providers_approve and v.status != "approved" %}
+          <div class="row-actions"><button class="btn btn-ghost btn-sm" type="button" data-dialog="veh-reject-{{ v.pk }}">Reject</button>
+            <button class="btn btn-primary btn-sm" type="button" data-dialog="veh-approve-{{ v.pk }}">Approve…</button></div>
+          <dialog id="veh-approve-{{ v.pk }}" class="modal" aria-labelledby="veh-approve-{{ v.pk }}-t">
+            <form method="post" action="{% url 'dashboard:vehicle_action' v.pk 'approve' %}">{% csrf_token %}
+              <div class="dialog-head"><h2 id="veh-approve-{{ v.pk }}-t">Approve {{ v.make }} {{ v.model }} ({{ v.year }})</h2><button type="button" class="dialog-close" data-close aria-label="Close">{% icon "x" 18 %}</button></div>
+              <div class="dialog-main"><p>Which ride types may this {{ v.kind }} serve? Ride types with a newer minimum year than {{ v.year }} will be refused.</p>
+                <fieldset class="checks" style="border:0;padding:0;margin:0"><legend class="sr-only">Ride types</legend>{{ v.approve_form.ride_types }}</fieldset></div>
+              <div class="dialog-foot"><button type="button" class="btn btn-ghost" data-close>Cancel</button><button class="btn btn-primary" type="submit">Approve vehicle</button></div>
+            </form>
+          </dialog>
+          {% url 'dashboard:vehicle_action' v.pk 'reject' as reject_vehicle_url %}
+          {% include "dashboard/partials/reason_dialog.html" with prefix="veh-reject-" id=v.pk action=reject_vehicle_url heading="Reject this vehicle?" text="They get a notification with your reason and can add another vehicle." button="Reject vehicle" danger=True %}
+        {% endif %}
+      </div>
+    {% empty %}{% include "dashboard/partials/empty.html" with title="No vehicle added yet" icon="wheel" %}{% endfor %}
+  </section>
+</div>
+{% endif %}
+
+{% url 'dashboard:provider_approve' p.pk as approve_url %}{% url 'dashboard:provider_status' p.pk 'reject' as reject_url %}
+{% url 'dashboard:provider_status' p.pk 'suspend' as suspend_url %}{% url 'dashboard:provider_status' p.pk 'reinstate' as reinstate_url %}
+{% include "dashboard/partials/reason_dialog.html" with id="approve" action=approve_url heading="Approve this application?" text="They can go online immediately and get a push notification. All required documents and the vehicle must already be approved." button="Approve" reason="none" %}
+{% include "dashboard/partials/reason_dialog.html" with id="reject" action=reject_url heading="Reject this application?" text="The reason is shown to them in the app." button="Reject application" danger=True placeholder="e.g. Licence photo doesn't match the name on the account" %}
+{% include "dashboard/partials/reason_dialog.html" with id="suspend" action=suspend_url heading="Suspend this driver/rider?" text="Takes them offline until reinstated. Their customer account isn't affected — use All accounts to block the person everywhere." button="Suspend" danger=True %}
+{% include "dashboard/partials/reason_dialog.html" with id="reinstate" action=reinstate_url heading="Reinstate?" text="Back to approved if they were approved before, otherwise back to review." button="Reinstate" reason="none" %}
+{% endblock %}

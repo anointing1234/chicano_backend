@@ -1,0 +1,56 @@
+{% extends "dashboard/base.html" %}
+{# Rides: every car and bike trip. Filters, sorting, paging and CSV export all run on the server. #}
+{% load dashboard_tags %}
+{% block title %}Rides{% endblock %}
+{% block panel %}customer{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Rides</h1><p>Search by ride ID, customer or driver name/phone, plate or address.</p></div>
+  <div class="page-actions">{% include "dashboard/partials/service_switch.html" %}
+    <a class="btn btn-secondary" href="{% query export='csv' page='' %}">{% icon "download" 16 %} Export CSV</a></div>
+</div>
+<section class="card">
+  <form class="filters" method="get" data-autosubmit role="search">
+    <div class="f grow"><label for="q">Search</label><div class="search-field">{% icon "search" 16 %}<input id="q" type="search" name="q" value="{{ f.q|default:'' }}" placeholder="Ride ID, name, phone, plate or address"></div></div>
+    <div class="f"><label for="status">Status</label><select id="status" name="status">{% for v, l in status_options %}<option value="{{ v }}"{% if f.status == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+    <div class="f"><label for="attention">Needs attention</label><select id="attention" name="attention">{% for v, l in attention_options %}<option value="{{ v }}"{% if f.attention == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+    <div class="f"><label for="ride_type">Ride type</label><select id="ride_type" name="ride_type"><option value="">Any type</option>
+      {% for t in ride_types %}<option value="{{ t.code }}"{% if f.ride_type == t.code %} selected{% endif %}>{{ t.name }} ({{ t.service }})</option>{% endfor %}</select></div>
+    {% if cities|length > 1 %}<div class="f"><label for="city">City</label><select id="city" name="city"><option value="">All cities</option>
+      {% for c in cities %}<option value="{{ c }}"{% if f.city == c %} selected{% endif %}>{{ c }}</option>{% endfor %}</select></div>{% endif %}
+    <div class="f"><label for="payment">Payment method</label><select id="payment" name="payment"><option value="">Any method</option>
+      <option value="cash"{% if f.payment == "cash" %} selected{% endif %}>Cash</option><option value="card"{% if f.payment == "card" %} selected{% endif %}>Card</option><option value="wallet"{% if f.payment == "wallet" %} selected{% endif %}>Wallet</option></select></div>
+    <div class="f"><label for="pay_status">Payment status</label><select id="pay_status" name="pay_status"><option value="">Any</option>
+      {% for v, l in pay_statuses %}<option value="{{ v }}"{% if f.pay_status == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+    <div class="f"><label for="from">From</label><input id="from" type="date" name="from" value="{{ f.from|default:'' }}"></div>
+    <div class="f"><label for="to">To</label><input id="to" type="date" name="to" value="{{ f.to|default:'' }}"></div>
+    {% if f.sort %}<input type="hidden" name="sort" value="{{ f.sort }}">{% endif %}
+    <div class="filters-actions"><button class="btn btn-secondary" type="submit">{% icon "search" 16 %} Apply</button>
+      {% filters_active "q" "status" "attention" "ride_type" "city" "payment" "pay_status" "from" "to" as filtered %}{% if filtered %}<a class="btn btn-ghost" href="?">Clear</a>{% endif %}</div>
+  </form>
+  {% if page.object_list %}
+  <div class="table-wrap"><table class="table responsive">
+    <thead><tr>{% sort_th "requested" "Requested" %}<th>Type</th><th>Route</th><th>Customer</th><th>Driver / rider</th>{% sort_th "fare" "Fare" "right" %}{% sort_th "status" "Status" %}<th><span class="sr-only">Actions</span></th></tr></thead>
+    <tbody>
+    {% for r in page %}
+      <tr class="clickable" data-href="{% url 'dashboard:trip_detail' r.pk %}">
+        <td class="primary"><a href="{% url 'dashboard:trip_detail' r.pk %}">{{ r.requested_at|date:"j M, H:i" }}</a><div class="cell-sub mono">#{{ r.pk|stringformat:"s"|slice:":8" }}</div></td>
+        <td>{% service_tag r.service %} {{ r.ride_type.name }}<div class="cell-sub">{{ r.city }}</div></td>
+        <td><div class="route"><span>{{ r.pickup_address }}</span><span class="muted">→ {{ r.dropoff_address }}</span></div></td>
+        <td>{{ r.customer.full_name }}<div class="cell-sub">{{ r.customer.phone }}</div></td>
+        <td>{% if r.provider %}{{ r.provider.user.full_name }}{% if r.vehicle %}<div class="cell-sub mono">{{ r.vehicle.plate_number }}</div>{% endif %}{% else %}<span class="muted">Not assigned</span>{% endif %}</td>
+        <td class="right">{{ r.total_amount|naira }}<div class="cell-sub">{{ r.payment_method|label }} · {{ r.payment_status|label }}</div></td>
+        <td><div class="chips">{% badge r.status %}{% if r.needs_manual_dispatch and r.status == "searching" %}{% badge "urgent" "Needs dispatch" %}{% endif %}{% if r.refunded_amount %}<span class="chip">Refunded</span>{% endif %}</div></td>
+        <td class="actions"><a class="row-go" href="{% url 'dashboard:trip_detail' r.pk %}" aria-label="View ride" data-tip="View ride">{% icon "chev-right" 18 %}</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% include "dashboard/partials/pager.html" %}
+  {% else %}
+    {% filters_active "q" "status" "attention" "ride_type" "city" "payment" "pay_status" "from" "to" as filtered %}
+    {% if filtered %}{% include "dashboard/partials/empty.html" with title="No rides match these filters" text="Widen the dates or clear the filters to see everything." clear_url="?" icon="route" %}
+    {% else %}{% include "dashboard/partials/empty.html" with title="No rides yet" text="Bookings from both User apps appear here." icon="route" %}{% endif %}
+  {% endif %}
+</section>
+{% endblock %}

@@ -1,0 +1,11 @@
+{% comment %} Horizontal bars for breakdowns. Include with `rows` = [{label, display, pct (0-100), cls}]. {% endcomment %}
+{% load dashboard_tags %}
+{% if rows %}
+<div class="hbars">
+  {% for r in rows %}
+    <div class="hbar"><span class="nowrap" style="overflow:hidden;text-overflow:ellipsis">{{ r.label|label }}</span>
+      <span class="hbar-track" aria-hidden="true"><span class="hbar-fill {{ r.cls }}" style="width: {{ r.pct }}%; display:block"></span></span>
+      <span class="num small"><strong>{{ r.display }}</strong></span></div>
+  {% endfor %}
+</div>
+{% else %}{% include "dashboard/partials/empty.html" with title="No data for this period" icon="chart" %}{% endif %}

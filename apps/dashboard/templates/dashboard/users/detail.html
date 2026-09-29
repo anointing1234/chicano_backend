@@ -1,0 +1,96 @@
+{% extends "dashboard/base.html" %}
+{# One account: status, wallet, stats; tabs for rides, payments, wallet and tickets; suspend/ban/reinstate. #}
+{% load dashboard_tags %}
+{% block title %}{{ person.full_name|default:person.phone }}{% endblock %}
+{% block crumbs %}<li><a href="{% if person.customer_profile %}{% url 'dashboard:customers' %}{% else %}{% url 'dashboard:users' %}{% endif %}">{% if person.customer_profile %}Customers{% else %}All accounts{% endif %}</a></li><li aria-current="page">{{ person.full_name|default:person.phone }}</li>{% endblock %}
+{% block heading %}{{ person.full_name|default:person.phone }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div class="profile-head">
+    <span class="avatar" aria-hidden="true">{{ person.full_name|initials }}</span>
+    <div><h1>{{ person.full_name|default:"No name yet" }}</h1>
+      <p>{{ person.phone }}{% if person.email %} · {{ person.email }}{% endif %} · joined {{ person.date_joined|date:"j M Y" }}</p>
+      <div class="chips">{% badge person.status %}{% for r in person.roles %}<span class="chip">{{ r|label }}</span>{% endfor %}</div></div>
+  </div>
+  {% if can.users_change and person.pk != request.user.pk %}
+    <div class="page-actions">
+      {% if person.provider_profile %}<a class="btn btn-secondary" href="{% url 'dashboard:provider_detail' person.provider_profile.pk %}">{{ person.provider_profile.kind|capfirst }} profile</a>{% endif %}
+      {% if person.status == "active" %}
+        <button class="btn btn-secondary" type="button" data-dialog="suspend">Suspend</button>
+        <button class="btn btn-danger" type="button" data-dialog="ban">Ban</button>
+      {% else %}
+        <button class="btn btn-primary" type="button" data-dialog="reinstate">Reinstate</button>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+
+{% if person.status != "active" %}<div class="alert alert-warning" role="status">{% icon "alert" 18 %}<span>This account is <strong>{{ person.status }}</strong>{% if person.status_reason %}: {{ person.status_reason }}{% endif %}. The person sees “account on hold” in every app.</span></div>{% endif %}
+
+<div class="stats">
+  {% include "dashboard/partials/stat.html" with title="Rides booked" value=rides_count|num icon="route" desc="All time, any status" %}
+  {% if person.customer_profile %}
+    {% include "dashboard/partials/stat.html" with title="Completed trips" value=person.customer_profile.total_trips|num icon="check" desc="As a customer" %}
+    {% include "dashboard/partials/stat.html" with title="Rating from drivers" value=person.customer_profile.rating_avg icon="trophy" desc="Average stars given to this customer" %}
+  {% endif %}
+  {% if person.wallet %}{% include "dashboard/partials/stat.html" with title="Wallet balance" value=person.wallet.balance_amount|naira icon="card" desc="Negative = owes a cancellation fee" %}{% endif %}
+</div>
+
+<div class="grid grid-main">
+  <div>
+    <nav class="tabs" aria-label="Account history">
+      <a class="tab{% if tab == 'rides' %} active{% endif %}" href="?tab=rides"{% if tab == 'rides' %} aria-current="page"{% endif %}>Rides</a>
+      <a class="tab{% if tab == 'payments' %} active{% endif %}" href="?tab=payments"{% if tab == 'payments' %} aria-current="page"{% endif %}>Payments</a>
+      <a class="tab{% if tab == 'wallet' %} active{% endif %}" href="?tab=wallet"{% if tab == 'wallet' %} aria-current="page"{% endif %}>Wallet</a>
+      <a class="tab{% if tab == 'tickets' %} active{% endif %}" href="?tab=tickets"{% if tab == 'tickets' %} aria-current="page"{% endif %}>Support tickets</a>
+    </nav>
+    <section class="card">
+    {% if tab == "payments" %}
+      {% if payments %}
+      <div class="table-wrap"><table class="table responsive">
+        <thead><tr><th>Date</th><th>Purpose</th><th>Method</th><th class="right">Amount</th><th>Status</th></tr></thead>
+        <tbody>{% for p in payments %}<tr>
+          <td class="primary">{{ p.created_at|date:"j M Y, H:i" }}{% if p.ride %}<div class="cell-sub"><a href="{% url 'dashboard:trip_detail' p.ride.pk %}">Open ride</a></div>{% endif %}</td>
+          <td>{{ p.get_purpose_display }}</td><td>{{ p.method|label }}</td>
+          <td class="right">{{ p.amount|naira:True }}</td>
+          <td>{% if p.status == "succeeded" %}{% badge "paid" "Succeeded" %}{% else %}{% badge "failed" %}{% if p.failure_reason %}<div class="cell-sub">{{ p.failure_reason }}</div>{% endif %}{% endif %}</td></tr>{% endfor %}</tbody>
+      </table></div>
+      {% else %}{% include "dashboard/partials/empty.html" with title="No payment records" text="Cash trips, card charges, top-ups and refunds show here." icon="card" %}{% endif %}
+    {% elif tab == "wallet" %}
+      {% if wallet_txs %}
+      <div class="table-wrap"><table class="table responsive">
+        <thead><tr><th>Date</th><th>Type</th><th class="right">Amount</th><th class="right">Balance after</th></tr></thead>
+        <tbody>{% for t in wallet_txs %}<tr><td class="primary">{{ t.created_at|date:"j M Y, H:i" }}{% if t.note %}<div class="cell-sub">{{ t.note }}</div>{% endif %}</td>
+          <td>{{ t.get_kind_display }}</td><td class="right {% if t.amount < 0 %}neg{% endif %}">{{ t.amount|naira:True }}</td><td class="right">{{ t.balance_after|naira:True }}</td></tr>{% endfor %}</tbody>
+      </table></div>
+      {% else %}{% include "dashboard/partials/empty.html" with title="No wallet activity" icon="card" %}{% endif %}
+    {% elif tab == "tickets" %}
+      {% if tickets %}
+      <ul class="list">{% for t in tickets %}<li><a class="list-row" href="{% url 'dashboard:ticket_detail' t.pk %}">
+        <div><div class="cell-main">{{ t.subject }}</div><div class="cell-sub">{{ t.get_category_display }} · updated {{ t.updated_at|ago }}</div></div>
+        <div class="chips">{% badge t.priority %}{% badge t.status %}</div></a></li>{% endfor %}</ul>
+      {% else %}{% include "dashboard/partials/empty.html" with title="No support tickets" icon="lifebuoy" %}{% endif %}
+    {% else %}
+      {% include "dashboard/partials/ride_rows.html" with rides=rides empty_title="No rides booked yet" %}
+      {% if rides_count > 20 %}<p class="small" style="margin-top:12px"><a href="{% url 'dashboard:trips' %}?q={{ person.phone|urlencode }}">See all {{ rides_count }} rides →</a></p>{% endif %}
+    {% endif %}
+    </section>
+  </div>
+  <section class="card">
+    <div class="card-head"><h2>Account</h2></div>
+    <dl class="kv">
+      <div><dt>Status</dt><dd>{% badge person.status %}</dd></div>
+      <div><dt>Phone verified</dt><dd>{% if person.phone_verified_at %}{{ person.phone_verified_at|date:"j M Y" }}{% else %}<span class="chip warn">Not verified</span>{% endif %}</dd></div>
+      {% if person.customer_profile %}<div><dt>Referral code</dt><dd class="mono">{{ person.customer_profile.referral_code }}</dd></div>
+      <div><dt>Stars they give</dt><dd>{% if rating_given %}★ {{ rating_given|floatformat:1 }}{% else %}—{% endif %}</dd></div>
+      <div><dt>Data saver</dt><dd>{{ person.customer_profile.data_saver|yesno:"On,Off" }}</dd></div>{% endif %}
+      {% if person.staff_role %}<div><dt>Staff role</dt><dd>{{ person.staff_role|label }}</dd></div>{% endif %}
+    </dl>
+  </section>
+</div>
+
+{% url 'dashboard:user_status' person.pk 'suspend' as suspend_url %}{% url 'dashboard:user_status' person.pk 'ban' as ban_url %}{% url 'dashboard:user_status' person.pk 'reinstate' as reinstate_url %}
+{% include "dashboard/partials/reason_dialog.html" with id="suspend" action=suspend_url heading="Suspend this account?" text="They'll see “account on hold” in every app on their next request. If they drive or ride, they're taken offline." button="Suspend account" danger=True placeholder="e.g. Chargeback under investigation" %}
+{% include "dashboard/partials/reason_dialog.html" with id="ban" action=ban_url heading="Ban this account permanently?" text="Use for fraud or safety issues. The reason is stored in the audit log." button="Ban account" danger=True %}
+{% include "dashboard/partials/reason_dialog.html" with id="reinstate" action=reinstate_url heading="Reinstate this account?" text="They can use the apps again straight away." button="Reinstate" reason="none" %}
+{% endblock %}

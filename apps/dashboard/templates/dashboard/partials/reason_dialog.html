@@ -1,0 +1,28 @@
+{% comment %}
+  Confirmation dialog for sensitive actions (opened by any button with data-dialog="<prefix><id>").
+  Include with: id, prefix (optional), action (URL), heading, text, button, danger (bool),
+    reason: "required" (default) | "optional" | "none", field ("reason" | "notes"), placeholder, next (return URL),
+    hidden_name + hidden_value (one extra hidden input, optional).
+{% endcomment %}
+{% load dashboard_tags %}
+<dialog id="{{ prefix|default:'' }}{{ id }}" class="modal{% if danger %} confirm{% endif %}" aria-labelledby="{{ prefix|default:'' }}{{ id }}-title">
+  <form method="post" action="{{ action }}">
+    {% csrf_token %}
+    {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+    {% if hidden_name %}<input type="hidden" name="{{ hidden_name }}" value="{{ hidden_value }}">{% endif %}
+    <div class="dialog-head">{% if danger %}<span class="dialog-icon danger" aria-hidden="true">{% icon "alert" 22 %}</span>{% endif %}<h2 id="{{ prefix|default:'' }}{{ id }}-title">{{ heading }}</h2><button type="button" class="dialog-close" data-close aria-label="Close">{% icon "x" 18 %}</button></div>
+    <div class="dialog-main">
+      {% if text %}<p>{{ text }}</p>{% endif %}
+      {% if reason != "none" %}
+        <div class="field">
+          <label for="{{ prefix|default:'' }}{{ id }}-reason">{% if reason == "optional" %}Note <span class="muted">(optional)</span>{% else %}Reason <span class="req" aria-hidden="true">*</span>{% endif %}</label>
+          <textarea id="{{ prefix|default:'' }}{{ id }}-reason" name="{{ field|default:'reason' }}" rows="3" maxlength="255" {% if reason != "optional" %}required{% endif %} placeholder="{{ placeholder|default:'' }}"></textarea>
+        </div>
+      {% endif %}
+    </div>
+    <div class="dialog-foot">
+      <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+      <button type="submit" class="btn {% if danger %}btn-danger{% else %}btn-primary{% endif %}">{{ button }}</button>
+    </div>
+  </form>
+</dialog>

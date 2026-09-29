@@ -1,0 +1,7 @@
+{# All / Cars / Bikes switch (remembered in the session; see access.current_service). #}
+{% load dashboard_tags %}
+<div class="segmented" role="group" aria-label="Business line">
+  <a class="seg{% if service == 'all' %} active{% endif %}" href="{% query service='all' page='' %}"{% if service == 'all' %} aria-current="true"{% endif %}>All</a>
+  <a class="seg{% if service == 'car' %} active{% endif %}" href="{% query service='car' page='' %}"{% if service == 'car' %} aria-current="true"{% endif %}>Cars</a>
+  <a class="seg{% if service == 'bike' %} active{% endif %}" href="{% query service='bike' page='' %}"{% if service == 'bike' %} aria-current="true"{% endif %}>Bikes</a>
+</div>

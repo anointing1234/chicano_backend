@@ -1,0 +1,58 @@
+{% extends "dashboard/base.html" %}
+{# Fares (incl. commission), ride types, service zones. Everyone reads; super admins edit. #}
+{% load dashboard_tags %}
+{% block title %}Fares, ride types & zones{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Fares, ride types &amp; zones</h1>
+    <p>{% if can.settings_edit %}Changes apply to new fare estimates immediately and are recorded in the audit log.{% else %}View only — ask a super admin to change prices.{% endif %}</p></div>
+  <div class="page-actions">{% include "dashboard/partials/service_switch.html" %}
+    {% if can.settings_edit %}{% if tab == "fares" %}<a class="btn btn-primary" href="{% url 'dashboard:fare_new' %}">{% icon "plus" 16 %} New fare rule</a>
+    {% elif tab == "ride-types" %}<a class="btn btn-primary" href="{% url 'dashboard:ride_type_new' %}">{% icon "plus" 16 %} New ride type</a>
+    {% elif tab == "zones" %}<a class="btn btn-primary" href="{% url 'dashboard:zone_new' %}">{% icon "plus" 16 %} New zone</a>{% endif %}{% endif %}</div>
+</div>
+<nav class="tabs">
+  <a class="tab{% if tab == 'fares' %} active{% endif %}" href="?tab=fares">Fares &amp; commission</a>
+  <a class="tab{% if tab == 'ride-types' %} active{% endif %}" href="?tab=ride-types">Ride types</a>
+  <a class="tab{% if tab == 'zones' %} active{% endif %}" href="?tab=zones">Cities &amp; service zones</a>
+</nav>
+<section class="card">
+{% if tab == "fares" %}
+  <p class="small muted">Fare = base + per km × distance + per minute × time + booking fee, at least the minimum, rounded to ₦50. Commission is the platform's share of each completed fare.</p>
+  {% if rows %}<div class="table-wrap"><table class="table responsive">
+    <thead><tr><th>Ride type</th><th>City</th><th class="right">Base</th><th class="right">Per km</th><th class="right">Per min</th><th class="right">Minimum</th><th class="right">Cancel fee</th><th class="right">Commission</th><th>Status</th>{% if can.settings_edit %}<th><span class="sr-only">Actions</span></th>{% endif %}</tr></thead>
+    <tbody>{% for r in rows %}
+      <tr{% if can.settings_edit %} class="clickable" data-href="{% url 'dashboard:fare_edit' r.pk %}"{% endif %}>
+        <td class="primary">{% service_tag r.ride_type.service %} <strong>{{ r.ride_type.name }}</strong><div class="cell-sub mono">{{ r.ride_type.code }}</div></td>
+        <td>{{ r.city }}</td><td class="right">{{ r.base_amount|naira }}</td><td class="right">{{ r.per_km_amount|naira }}</td><td class="right">{{ r.per_min_amount|naira }}</td>
+        <td class="right">{{ r.minimum_amount|naira }}</td><td class="right">{{ r.cancellation_fee_amount|naira }}</td><td class="right">{{ r.commission_percent|floatformat:"-2" }}%</td>
+        <td>{% if r.is_active %}{% badge "active" %}{% else %}{% badge "inactive" "Inactive" %}{% endif %}</td>
+        {% if can.settings_edit %}<td class="actions"><a class="btn btn-ghost btn-sm" href="{% url 'dashboard:fare_edit' r.pk %}">{% icon "edit" 14 %} Edit</a></td>{% endif %}
+      </tr>{% endfor %}</tbody></table></div>
+  {% else %}{% include "dashboard/partials/empty.html" with title="No fare rules yet" text="Without an active fare rule, a ride type can't be booked." icon="money" %}{% endif %}
+{% elif tab == "ride-types" %}
+  {% if rows %}<div class="table-wrap"><table class="table responsive">
+    <thead><tr><th>Name</th><th>Code</th><th>Service</th><th class="right">Seats</th><th class="right">Oldest vehicle</th><th>Status</th>{% if can.settings_edit %}<th><span class="sr-only">Actions</span></th>{% endif %}</tr></thead>
+    <tbody>{% for r in rows %}
+      <tr{% if can.settings_edit %} class="clickable" data-href="{% url 'dashboard:ride_type_edit' r.pk %}"{% endif %}>
+        <td class="primary"><strong>{{ r.name }}</strong><div class="cell-sub">{{ r.description }}</div></td><td class="mono">{{ r.code }}</td><td>{% service_tag r.service %}</td>
+        <td class="right">{{ r.seats }}</td><td class="right">{{ r.min_vehicle_year|default:"Any" }}</td>
+        <td>{% if r.is_active %}{% badge "active" "Shown" %}{% else %}{% badge "inactive" "Hidden" %}{% endif %}</td>
+        {% if can.settings_edit %}<td class="actions"><a class="btn btn-ghost btn-sm" href="{% url 'dashboard:ride_type_edit' r.pk %}">{% icon "edit" 14 %} Edit</a></td>{% endif %}
+      </tr>{% endfor %}</tbody></table></div>
+  {% else %}{% include "dashboard/partials/empty.html" with title="No ride types yet" icon="route" %}{% endif %}
+{% else %}
+  <p class="small muted">If a service has no active zones in a city, the whole city is allowed. Otherwise pickups and drop-offs must be inside a zone.</p>
+  {% if rows %}<div class="table-wrap"><table class="table responsive">
+    <thead><tr><th>Name</th><th>City</th><th>Service</th><th>Boundary (south, west → north, east)</th><th>Status</th>{% if can.settings_edit %}<th><span class="sr-only">Actions</span></th>{% endif %}</tr></thead>
+    <tbody>{% for r in rows %}
+      <tr{% if can.settings_edit %} class="clickable" data-href="{% url 'dashboard:zone_edit' r.pk %}"{% endif %}>
+        <td class="primary"><strong>{{ r.name }}</strong></td><td>{{ r.city }}</td><td>{% service_tag r.service %}</td>
+        <td class="mono small">{{ r.min_lat }}, {{ r.min_lng }} → {{ r.max_lat }}, {{ r.max_lng }}</td>
+        <td>{% if r.is_active %}{% badge "active" %}{% else %}{% badge "inactive" "Off" %}{% endif %}</td>
+        {% if can.settings_edit %}<td class="actions"><a class="btn btn-ghost btn-sm" href="{% url 'dashboard:zone_edit' r.pk %}">{% icon "edit" 14 %} Edit</a></td>{% endif %}
+      </tr>{% endfor %}</tbody></table></div>
+  {% else %}{% include "dashboard/partials/empty.html" with title="No zones: the whole city is allowed" icon="radar" %}{% endif %}
+{% endif %}
+</section>
+{% endblock %}

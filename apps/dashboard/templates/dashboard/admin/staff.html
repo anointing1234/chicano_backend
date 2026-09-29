@@ -1,0 +1,38 @@
+{% extends "dashboard/base.html" %}
+{# Staff & roles: staff accounts plus a plain-language permission matrix (from apps/core/roles.py). #}
+{% load dashboard_tags %}
+{% block title %}Staff & roles{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Staff &amp; roles</h1><p>Who can use this dashboard and what each role may do. Permissions are enforced on the server for every page and action.</p></div>
+  <div class="page-actions"><a class="btn btn-primary" href="{% url 'dashboard:staff_new' %}">{% icon "plus" 16 %} Add staff member</a></div>
+</div>
+<section class="card">
+  <div class="card-head"><h2>Staff accounts</h2>
+    <form method="get" data-autosubmit class="range"><label class="sr-only" for="role">Role</label><select id="role" name="role" style="width:auto"><option value="">All roles</option>
+      {% for key, desc in roles %}<option value="{{ key }}"{% if f.role == key %} selected{% endif %}>{{ key|label }}</option>{% endfor %}</select></form></div>
+  {% if rows %}<div class="table-wrap"><table class="table responsive">
+    <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Last sign-in</th><th><span class="sr-only">Actions</span></th></tr></thead>
+    <tbody>{% for u in rows %}
+      <tr class="clickable" data-href="{% url 'dashboard:staff_edit' u.pk %}">
+        <td class="primary"><div class="person"><span class="avatar" aria-hidden="true">{{ u.full_name|initials }}</span><a href="{% url 'dashboard:staff_edit' u.pk %}">{{ u.full_name }}</a></div></td>
+        <td>{{ u.email }}</td><td><span class="chip">{{ u.staff_role|label }}</span></td><td>{% badge u.status %}</td>
+        <td class="nowrap">{{ u.last_login|date:"j M, H:i"|default:"Never" }}</td>
+        <td class="actions"><div class="row-actions"><a class="btn btn-ghost btn-sm" href="{% url 'dashboard:staff_edit' u.pk %}">{% icon "edit" 14 %} Edit</a>
+          <details class="menu row-menu" data-align="end"><summary aria-label="More actions for {{ u.full_name }}">{% icon "more" 18 %}</summary>
+            <div class="menu-panel" role="menu">
+              <a class="menu-item" role="menuitem" href="{% url 'dashboard:staff_edit' u.pk %}">{% icon "edit" 16 %} Edit name, role or password</a>
+              <a class="menu-item" role="menuitem" href="{% url 'dashboard:audit' %}?actor={{ u.pk }}">{% icon "list" 16 %} Their audit log</a>
+              {% if u.pk != request.user.pk %}<div class="menu-sep"></div><a class="menu-item danger" role="menuitem" href="{% url 'dashboard:user_detail' u.pk %}">{% icon "ban" 16 %} Suspend or ban account…</a>{% endif %}
+            </div></details></div></td>
+      </tr>{% endfor %}</tbody></table></div>
+  {% else %}{% include "dashboard/partials/empty.html" with title="No staff with this role" clear_url="?" icon="shield" %}{% endif %}
+</section>
+<section class="card">
+  <div class="card-head"><div><h2>What each role can do</h2><p>{% for key, desc in roles %}<strong>{{ key|label }}</strong>: {{ desc }}{% if not forloop.last %} · {% endif %}{% endfor %}</p></div></div>
+  <div class="table-wrap"><table class="table matrix">
+    <thead><tr><th>Permission</th>{% for key, desc in roles %}<th>{{ key|label }}</th>{% endfor %}</tr></thead>
+    <tbody>{% for row in matrix %}<tr><td>{{ row.label }}</td>{% for allowed in row.cells %}<td>{% if allowed %}<span class="yes" aria-label="Allowed">✓</span>{% else %}<span class="no" aria-label="Not allowed">—</span>{% endif %}</td>{% endfor %}</tr>{% endfor %}</tbody>
+  </table></div>
+</section>
+{% endblock %}

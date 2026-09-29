@@ -1,0 +1,23 @@
+{% extends "dashboard/base.html" %}
+{# Global search results (header search box). Only sections this role may see are searched. #}
+{% load dashboard_tags %}
+{% block title %}Search{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Search</h1><p>People by name, phone or email · drivers and riders by plate · rides by ID · tickets by subject.</p></div></div>
+<form class="card filters" method="get" role="search">
+  <div class="f grow"><label for="sq">Search</label><div class="search-field">{% icon "search" 16 %}<input id="sq" type="search" name="q" value="{{ q }}" placeholder="e.g. 0803 000 0001, Emeka, KJA482FT, 3f2a9c1e" autofocus></div></div>
+  <div class="filters-actions"><button class="btn btn-primary" type="submit">{% icon "search" 16 %} Search</button></div>
+</form>
+{% if q and total == 0 %}{% include "dashboard/partials/empty.html" with title="Nothing found" text="Check the spelling, or try the phone number without the leading 0." icon="search" %}
+{% elif not q %}{% include "dashboard/partials/empty.html" with title="Type at least 2 characters" icon="search" %}{% endif %}
+<div class="grid grid-2">
+  {% if results.people %}<section class="card"><div class="card-head"><h2>People</h2></div>
+    {% for u in results.people %}<a class="list-row" href="{% url 'dashboard:user_detail' u.pk %}"><div class="person"><span class="avatar" aria-hidden="true">{{ u.full_name|initials }}</span><div><div class="cell-main">{{ u.full_name|default:"No name" }}</div><div class="cell-sub">{{ u.phone }}{% if u.email %} · {{ u.email }}{% endif %}</div></div></div><div class="chips">{% for r in u.roles %}<span class="chip">{{ r|label }}</span>{% endfor %}</div></a>{% endfor %}</section>{% endif %}
+  {% if results.providers %}<section class="card"><div class="card-head"><h2>Drivers &amp; riders</h2></div>
+    {% for p in results.providers %}<a class="list-row" href="{% url 'dashboard:provider_detail' p.pk %}"><div><div class="cell-main">{{ p.user.full_name }} {% service_tag p.service %}</div><div class="cell-sub">{{ p.user.phone }} · {{ p.city }}</div></div>{% badge p.status %}</a>{% endfor %}</section>{% endif %}
+  {% if results.rides %}<section class="card"><div class="card-head"><h2>Rides</h2></div>
+    {% for r in results.rides %}<a class="list-row" href="{% url 'dashboard:trip_detail' r.pk %}"><div><div class="cell-main mono">#{{ r.pk|stringformat:"s"|slice:":8" }}</div><div class="cell-sub">{{ r.requested_at|date:"j M Y, H:i" }} · {{ r.customer.full_name }} · {{ r.ride_type.name }}</div></div>{% badge r.status %}</a>{% endfor %}</section>{% endif %}
+  {% if results.tickets %}<section class="card"><div class="card-head"><h2>Support tickets</h2></div>
+    {% for t in results.tickets %}<a class="list-row" href="{% url 'dashboard:ticket_detail' t.pk %}"><div><div class="cell-main">{{ t.subject }}</div><div class="cell-sub">{{ t.user.full_name }} · {{ t.updated_at|ago }}</div></div>{% badge t.status %}</a>{% endfor %}</section>{% endif %}
+</div>
+{% endblock %}

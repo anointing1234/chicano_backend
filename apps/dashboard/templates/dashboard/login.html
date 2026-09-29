@@ -1,0 +1,45 @@
+{% load static dashboard_tags %}<!doctype html>
+{# Staff sign-in (email + password, Django session). Customers, drivers and riders use the mobile apps. #}
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in · Chicano Cruise Admin</title>
+  <link rel="icon" href="{% static 'dashboard/favicon.svg' %}" type="image/svg+xml">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700&display=swap">
+  <link rel="stylesheet" href="{% static 'dashboard/dashboard.css' %}">
+</head>
+<body>
+<main class="login">
+  <section class="login-art" aria-hidden="true">
+    <div class="brand"><img src="{% static 'dashboard/favicon.svg' %}" width="40" height="40" alt=""><span class="brand-text"><span class="brand-name">Chicano Cruise</span><span class="brand-sub">Admin</span></span></div>
+    <div>
+      <h2>Run every ride in Lagos from one place.</h2>
+      <p>Dispatch, drivers and riders, customers, payments and support — for cars and bikes.</p>
+      <div class="login-panels"><span class="panel-pill customer">Customers &amp; Rides</span><span class="panel-pill driver">Drivers &amp; Fleet</span></div>
+    </div>
+    <p class="small">Staff access only. Every action is recorded in the audit log.</p>
+  </section>
+  <section class="login-form">
+    <form class="login-card" method="post" novalidate>
+      {% csrf_token %}
+      <div class="brand" style="color:var(--navy)"><img src="{% static 'dashboard/favicon.svg' %}" width="36" height="36" alt=""><span class="brand-text"><span class="brand-name" style="color:var(--navy)">Chicano Cruise</span><span class="brand-sub" style="color:var(--muted)">Admin</span></span></div>
+      <h1>Sign in</h1>
+      <p class="muted">Use your work email and password.</p>
+      {% for message in messages %}<div class="alert alert-{{ message.tags }}" role="status">{{ message }}</div>{% endfor %}
+      {% for error in form.non_field_errors %}<div class="alert alert-error" role="alert">{% icon "alert" 18 %}<span>{{ error }}</span></div>{% endfor %}
+      <div class="field{% if form.email.errors %} has-error{% endif %}">
+        <label for="{{ form.email.id_for_label }}">Work email</label>{{ form.email }}
+        {% for e in form.email.errors %}<span class="error">{{ e }}</span>{% endfor %}
+      </div>
+      <div class="field{% if form.password.errors %} has-error{% endif %}">
+        <label for="{{ form.password.id_for_label }}">Password</label>{{ form.password }}
+        {% for e in form.password.errors %}<span class="error">{{ e }}</span>{% endfor %}
+      </div>
+      <button class="btn btn-navy" type="submit">Sign in</button>
+    </form>
+  </section>
+</main>
+<script src="{% static 'dashboard/dashboard.js' %}"></script>
+</body>
+</html>

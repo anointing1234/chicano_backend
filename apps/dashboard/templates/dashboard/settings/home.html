@@ -1,0 +1,92 @@
+{% extends "dashboard/base.html" %}
+{# Settings tabs: Fares · Ride types · Service zones (everyone reads, super admins edit) · Team · Audit log (super admins). #}
+{% load dashboard_tags %}
+{% block content %}
+  <div class="page-header">
+    <div><h1>Settings</h1>
+      <p class="muted">{% if can.settings_edit %}Changes apply to new fare estimates immediately and are recorded in the audit log.{% else %}View only. Ask a super admin to change prices.{% endif %}</p></div>
+    <div class="page-actions">
+      {% if can.settings_edit and tab == "fares" %}<a class="btn btn-primary" href="{% url 'dashboard:fare_new' %}">New fare rule</a>{% endif %}
+      {% if can.settings_edit and tab == "ride-types" %}<a class="btn btn-primary" href="{% url 'dashboard:ride_type_new' %}">New ride type</a>{% endif %}
+      {% if can.settings_edit and tab == "zones" %}<a class="btn btn-primary" href="{% url 'dashboard:zone_new' %}">New zone</a>{% endif %}
+      {% if can.team and tab == "team" %}<a class="btn btn-primary" href="{% url 'dashboard:staff_new' %}">Add staff member</a>{% endif %}
+    </div>
+  </div>
+  <nav class="tabs">
+    <a class="tab{% if tab == 'fares' %} active{% endif %}" href="?tab=fares">Fares</a>
+    <a class="tab{% if tab == 'ride-types' %} active{% endif %}" href="?tab=ride-types">Ride types</a>
+    <a class="tab{% if tab == 'zones' %} active{% endif %}" href="?tab=zones">Service zones</a>
+    {% if can.team %}<a class="tab{% if tab == 'team' %} active{% endif %}" href="?tab=team">Team</a>{% endif %}
+    {% if can.audit %}<a class="tab{% if tab == 'audit' %} active{% endif %}" href="?tab=audit">Audit log</a>{% endif %}
+  </nav>
+
+  <section class="card">
+  {% if tab == "fares" %}
+    <p class="muted small">Fare = base + per km × distance + per minute × time + booking fee, at least the minimum, rounded to ₦50.</p>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Ride type</th><th>City</th><th class="right">Base</th><th class="right">Per km</th><th class="right">Per min</th><th class="right">Minimum</th><th class="right">Cancel fee</th><th class="right">Commission</th><th>Status</th></tr></thead>
+      <tbody>{% for r in rows %}
+        <tr {% if can.settings_edit %}class="clickable" data-href="{% url 'dashboard:fare_edit' r.pk %}"{% endif %}>
+          <td>{% service_tag r.ride_type.service %} <strong>{{ r.ride_type.name }}</strong> <span class="mono muted">{{ r.ride_type.code }}</span></td>
+          <td>{{ r.city }}</td>
+          <td class="right">{{ r.base_amount|naira }}</td><td class="right">{{ r.per_km_amount|naira }}</td><td class="right">{{ r.per_min_amount|naira }}</td>
+          <td class="right">{{ r.minimum_amount|naira }}</td><td class="right">{{ r.cancellation_fee_amount|naira }}</td>
+          <td class="right">{{ r.commission_percent|floatformat:"-2" }}%</td>
+          <td>{% if r.is_active %}{% badge "active" %}{% else %}{% badge "inactive" "Inactive" %}{% endif %}</td>
+        </tr>{% empty %}<tr><td colspan="9" class="muted">No fare rules yet.</td></tr>{% endfor %}</tbody>
+    </table></div>
+
+  {% elif tab == "ride-types" %}
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Name</th><th>Code</th><th>Service</th><th class="right">Seats</th><th class="right">Min. year</th><th>Status</th></tr></thead>
+      <tbody>{% for r in rows %}
+        <tr {% if can.settings_edit %}class="clickable" data-href="{% url 'dashboard:ride_type_edit' r.pk %}"{% endif %}>
+          <td><strong>{{ r.name }}</strong><div class="muted small">{{ r.description }}</div></td>
+          <td class="mono">{{ r.code }}</td><td>{% service_tag r.service %}</td>
+          <td class="right">{{ r.seats }}</td><td class="right">{{ r.min_vehicle_year|default:"—" }}</td>
+          <td>{% if r.is_active %}{% badge "active" %}{% else %}{% badge "inactive" "Hidden" %}{% endif %}</td>
+        </tr>{% endfor %}</tbody>
+    </table></div>
+
+  {% elif tab == "zones" %}
+    <p class="muted small">If a service has no active zones in a city, the whole city is allowed.</p>
+    {% if rows %}<div class="table-wrap"><table class="table">
+      <thead><tr><th>Name</th><th>Service</th><th>City</th><th>Bounds (south,west → north,east)</th><th>Status</th></tr></thead>
+      <tbody>{% for r in rows %}
+        <tr {% if can.settings_edit %}class="clickable" data-href="{% url 'dashboard:zone_edit' r.pk %}"{% endif %}>
+          <td><strong>{{ r.name }}</strong></td><td>{% service_tag r.service %}</td><td>{{ r.city }}</td>
+          <td class="mono small">{{ r.min_lat }},{{ r.min_lng }} → {{ r.max_lat }},{{ r.max_lng }}</td>
+          <td>{% if r.is_active %}{% badge "active" %}{% else %}{% badge "inactive" "Off" %}{% endif %}</td>
+        </tr>{% endfor %}</tbody>
+    </table></div>{% else %}<div class="empty"><div class="empty-title">No zones: the whole city is allowed</div></div>{% endif %}
+
+  {% elif tab == "team" %}
+    <p class="muted small">To remove someone's access, suspend them under Users.</p>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Last sign-in</th></tr></thead>
+      <tbody>{% for u in rows %}
+        <tr class="clickable" data-href="{% url 'dashboard:staff_edit' u.pk %}">
+          <td><strong>{{ u.full_name }}</strong></td><td>{{ u.email }}</td><td><span class="chip">{{ u.staff_role|label }}</span></td>
+          <td>{% badge u.status %}</td><td>{{ u.last_login|date:"j M, H:i"|default:"never" }}</td>
+        </tr>{% endfor %}</tbody>
+    </table></div>
+
+  {% else %}
+    <form class="filters" method="get"><input type="hidden" name="tab" value="audit">
+      <input type="search" name="action" value="{{ action }}" placeholder="Action starts with, e.g. ride. or provider.approve" class="search">
+      <button class="btn btn-secondary">Filter</button></form>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Record</th><th>Details</th></tr></thead>
+      <tbody>{% for a in page %}
+        <tr>
+          <td>{{ a.created_at|date:"j M, H:i:s" }}</td>
+          <td>{{ a.actor.full_name|default:"System" }}<div class="muted small">{{ a.actor.staff_role|label }}</div></td>
+          <td class="mono">{{ a.action }}</td>
+          <td class="small">{{ a.target_type }} <span class="mono muted">{{ a.target_id|truncatechars:9 }}</span></td>
+          <td class="small muted">{% for k, v in a.data.items %}{{ k }}: {{ v }}{% if not forloop.last %} · {% endif %}{% endfor %}</td>
+        </tr>{% empty %}<tr><td colspan="5" class="muted">No actions recorded.</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% include "dashboard/partials/pager.html" %}
+  {% endif %}
+  </section>
+{% endblock %}

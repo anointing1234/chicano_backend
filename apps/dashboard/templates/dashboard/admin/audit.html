@@ -1,0 +1,33 @@
+{% extends "dashboard/base.html" %}
+{# Audit log: every staff action, filterable by area, person, record and date. #}
+{% load dashboard_tags %}
+{% block title %}Audit log{% endblock %}
+{% block content %}
+<div class="page-header"><div><h1>Audit log</h1><p>Every sensitive action taken in the dashboard or the staff API: approvals, refunds, suspensions, price changes, document views, broadcasts.</p></div></div>
+<section class="card">
+  <form class="filters" method="get" data-autosubmit>
+    <div class="f"><label for="action">Area</label><select id="action" name="action"><option value="">Everything</option>
+      {% for a in actions %}<option value="{{ a }}."{% if f.action == a|add:"." %} selected{% endif %}>{{ a|label }}</option>{% endfor %}</select></div>
+    <div class="f"><label for="actor">Staff member</label><select id="actor" name="actor"><option value="">Anyone</option>
+      {% for s in staff %}<option value="{{ s.pk }}"{% if f.actor == s.pk|stringformat:"s" %} selected{% endif %}>{{ s.full_name }}</option>{% endfor %}</select></div>
+    <div class="f grow"><label for="target">Record</label><div class="search-field">{% icon "search" 16 %}<input id="target" type="search" name="target" value="{{ f.target|default:'' }}" placeholder="Record ID (start of it) or type, e.g. Ride"></div></div>
+    <div class="f"><label for="from">From</label><input id="from" type="date" name="from" value="{{ f.from|default:'' }}"></div>
+    <div class="f"><label for="to">To</label><input id="to" type="date" name="to" value="{{ f.to|default:'' }}"></div>
+    <div class="filters-actions"><button class="btn btn-secondary" type="submit">{% icon "filter" 16 %} Filter</button>
+      {% filters_active "action" "actor" "target" "from" "to" as filtered %}{% if filtered %}<a class="btn btn-ghost" href="?">Clear</a>{% endif %}</div>
+  </form>
+  {% if page.object_list %}
+  <div class="table-wrap"><table class="table responsive">
+    <thead><tr><th>When</th><th>Who</th><th>Action</th><th>Record</th><th>Details</th></tr></thead>
+    <tbody>{% for a in page %}
+      <tr><td class="primary nowrap">{{ a.created_at|date:"j M Y, H:i:s" }}</td>
+        <td>{{ a.actor.full_name|default:"System" }}<div class="cell-sub">{{ a.actor.staff_role|label }}{% if a.ip_address %} · {{ a.ip_address }}{% endif %}</div></td>
+        <td class="mono">{{ a.action }}</td>
+        <td class="small">{{ a.target_type }}<div class="cell-sub mono">{{ a.target_id|truncatechars:13 }}</div></td>
+        <td class="small">{% for k, v in a.data.items %}<div><span class="muted">{{ k|label }}:</span> {{ v|truncatechars:80 }}</div>{% empty %}<span class="muted">—</span>{% endfor %}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% include "dashboard/partials/pager.html" %}
+  {% else %}{% include "dashboard/partials/empty.html" with title="No actions match" clear_url="?" icon="list" %}{% endif %}
+</section>
+{% endblock %}

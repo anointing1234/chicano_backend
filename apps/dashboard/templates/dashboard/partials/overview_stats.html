@@ -1,0 +1,26 @@
+{# Overview numbers + 7-day chart. Rendered inside overview.html and refreshed alone every 30 s. #}
+{% load dashboard_tags %}
+<div class="stats">
+  <div class="stat"><div class="stat-label">Trips today</div><div class="stat-value">{{ o.trips_today|num }}</div><div class="stat-hint">{{ o.cancelled_today|num }} cancelled</div></div>
+  <div class="stat"><div class="stat-label">Gross bookings</div><div class="stat-value">{{ o.gross_today_amount|naira }}</div><div class="stat-hint">{{ o.commission_today_amount|naira }} commission</div></div>
+  <div class="stat"><div class="stat-label">Live now</div><div class="stat-value">{{ o.active_trips|num }}</div><div class="stat-hint">searching or on a trip</div></div>
+  <div class="stat"><div class="stat-label">Online drivers &amp; riders</div><div class="stat-value">{{ o.online_providers|num }}</div></div>
+</div>
+<div class="stats">
+  <a class="stat{% if o.needs_manual_dispatch %} stat-alert{% endif %}" href="{% url 'dashboard:dispatch' %}"><div class="stat-label">Needs manual dispatch</div><div class="stat-value">{{ o.needs_manual_dispatch|num }}</div></a>
+  <a class="stat{% if o.open_sos %} stat-alert{% endif %}" href="{% url 'dashboard:support' %}?tab=sos"><div class="stat-label">Open SOS</div><div class="stat-value">{{ o.open_sos|num }}</div></a>
+  <a class="stat" href="{% url 'dashboard:providers' %}?status=under_review"><div class="stat-label">Awaiting approval</div><div class="stat-value">{{ o.providers_awaiting_review|num }}</div><div class="stat-hint">{{ o.documents_pending|num }} documents to review</div></a>
+  <div class="stat"><div class="stat-label">Customers</div><div class="stat-value">{{ o.customers_total|num }}</div><div class="stat-hint">+{{ o.new_customers_today|num }} today</div></div>
+</div>
+<section class="card">
+  <header class="card-head"><h2>Completed trips, last 7 days</h2></header>
+  <div class="bars">
+    {% for d in o.last_7_days %}
+      <div class="bar-col" title="{{ d.date|date:'D j M' }}: {{ d.trips }} trips · {{ d.gross_amount|naira }}">
+        <div class="bar-val">{{ d.trips|num }}</div>
+        <div class="bar" style="height: {{ d.height }}%"></div>
+        <div class="bar-label">{{ d.date|date:"D" }}</div>
+      </div>
+    {% endfor %}
+  </div>
+</section>

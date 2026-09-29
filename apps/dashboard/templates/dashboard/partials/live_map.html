@@ -1,0 +1,16 @@
+{# Schematic map of greater Lagos with a pin per online driver (blue) / rider (orange); ink = on a trip. #}
+{# Refreshed every 10 s. Swap for Google Maps / Mapbox when you have an API key. #}
+{% load dashboard_tags %}
+<div class="map">
+  <svg viewBox="0 0 100 60" preserveAspectRatio="none" class="map-bg" aria-hidden="true"><path d="M0 44 C 20 40, 35 47, 50 43 S 80 40, 100 45 L100 60 L0 60 Z" class="map-water"/></svg>
+  <span class="map-label" style="left:41.7%;top:31.3%">Ikeja</span>
+  <span class="map-label" style="left:47.5%;top:54.7%">Yaba</span>
+  <span class="map-label" style="left:40%;top:65.6%">Surulere</span>
+  <span class="map-label" style="left:53.3%;top:84.4%">V.I.</span>
+  <span class="map-label" style="left:61.7%;top:78.1%">Lekki</span>
+  {% for p in pins %}
+    <span class="pin pin-{{ p.service }}{% if p.on_trip %} on-trip{% endif %}" style="left:{{ p.last_lng|map_x }}%;top:{{ p.last_lat|map_y }}%"
+          title="{{ p.user.full_name }} ({{ p.kind }}) · {% if p.on_trip %}on a trip{% else %}available{% endif %} · {{ p.last_location_at|ago }}"></span>
+  {% endfor %}
+  <div class="map-legend"><span><i class="pin pin-car"></i> Driver</span><span><i class="pin pin-bike"></i> Rider</span><span><i class="pin on-trip"></i> On trip</span><span class="muted">{{ pins|length }} online</span></div>
+</div>

@@ -1,0 +1,17 @@
+{# Waiting rides; "Needs you" first. Rendered in dispatch.html and refreshed alone every 5 s. #}
+{% load dashboard_tags %}
+{% if queue %}
+  <ul class="list">
+    {% for r in queue %}
+      <li><a class="list-row{% if selected and selected.pk == r.pk %} selected{% endif %}" href="?ride={{ r.pk }}#assign"{% if selected and selected.pk == r.pk %} aria-current="true"{% endif %}>
+        <div style="min-width:0">{% service_tag r.service %} <span class="cell-main">{{ r.pickup_address }}</span>
+          <div class="cell-sub">→ {{ r.dropoff_address }}</div>
+          <div class="cell-sub">{{ r.customer.full_name }} · waiting {{ r.requested_at|timesince }}</div></div>
+        <div class="right">{% if r.needs_manual_dispatch %}{% badge "urgent" "Needs you" %}{% else %}{% badge "searching" "Auto" %}{% endif %}
+          <div class="small num">{{ r.total_amount|naira }}</div></div>
+      </a></li>
+    {% endfor %}
+  </ul>
+{% else %}
+  {% include "dashboard/partials/empty.html" with title="No one is waiting" text="New requests appear here within seconds." icon="check" %}
+{% endif %}

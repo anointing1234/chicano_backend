@@ -1,0 +1,56 @@
+{% extends "dashboard/base.html" %}
+{# Manage customers (Customers & Rides) / All accounts (Administration): one combined users table. #}
+{% load dashboard_tags %}
+{% block title %}{% if customers_only %}Manage customers{% else %}All accounts{% endif %}{% endblock %}
+{% block panel %}{% if customers_only %}customer{% else %}admin{% endif %}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>{% if customers_only %}Manage customers{% else %}All accounts{% endif %}</h1>
+    <p>{% if customers_only %}Everyone who books rides in the User app · Cars or User app · Bikes.{% else %}The combined users table: customers, drivers, riders and staff. One account per phone number.{% endif %}</p></div>
+</div>
+<section class="card">
+  <form class="filters" method="get" data-autosubmit role="search">
+    <div class="f grow"><label for="q">Search</label><div class="search-field">{% icon "search" 16 %}<input id="q" type="search" name="q" value="{{ q }}" placeholder="Name, phone (0803…) or email"></div></div>
+    {% if not customers_only %}
+    <div class="f"><label for="role">Role</label><select id="role" name="role">
+      <option value="">All roles</option>
+      <option value="customer"{% if role == "customer" %} selected{% endif %}>Customers</option>
+      <option value="driver"{% if role == "driver" %} selected{% endif %}>Drivers (cars)</option>
+      <option value="rider"{% if role == "rider" %} selected{% endif %}>Riders (bikes)</option>
+      <option value="staff"{% if role == "staff" %} selected{% endif %}>Staff</option></select></div>
+    {% endif %}
+    <div class="f"><label for="status">Account status</label><select id="status" name="status"><option value="">Any status</option>
+      {% for v, l in statuses %}<option value="{{ v }}"{% if status == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+    <div class="f"><label for="verified">Phone verification</label><select id="verified" name="verified"><option value="">Any</option>
+      <option value="yes"{% if verified == "yes" %} selected{% endif %}>Verified</option><option value="no"{% if verified == "no" %} selected{% endif %}>Not verified</option></select></div>
+    {% if sort %}<input type="hidden" name="sort" value="{{ sort }}">{% endif %}
+    <div class="filters-actions"><button class="btn btn-secondary" type="submit">{% icon "search" 16 %} Search</button>
+      {% filters_active "q" "role" "status" "verified" as filtered %}{% if filtered %}<a class="btn btn-ghost" href="?">Clear</a>{% endif %}</div>
+  </form>
+
+  {% if page.object_list %}
+  <div class="table-wrap"><table class="table responsive">
+    <thead><tr>{% sort_th "name" "Name" %}<th>Phone</th><th>Roles</th>{% if customers_only %}{% sort_th "trips" "Trips" "right" %}<th class="right">Wallet</th>{% endif %}{% sort_th "status" "Status" %}{% sort_th "joined" "Joined" %}<th><span class="sr-only">Actions</span></th></tr></thead>
+    <tbody>
+    {% for u in page %}
+      <tr class="clickable" data-href="{% url 'dashboard:user_detail' u.pk %}">
+        <td class="primary"><div class="person"><span class="avatar" aria-hidden="true">{{ u.full_name|initials }}</span>
+          <div><a href="{% url 'dashboard:user_detail' u.pk %}">{{ u.full_name|default:"No name yet" }}</a><div class="cell-sub">{{ u.email|default:"" }}</div></div></div></td>
+        <td class="nowrap">{{ u.phone }}{% if not u.phone_verified_at %} <span class="chip warn">unverified</span>{% endif %}</td>
+        <td><div class="chips">{% for r in u.roles %}<span class="chip">{{ r|label }}</span>{% empty %}<span class="muted">—</span>{% endfor %}</div></td>
+        {% if customers_only %}<td class="right">{{ u.customer_profile.total_trips|num }}</td><td class="right">{% if u.wallet %}{{ u.wallet.balance_amount|naira }}{% else %}—{% endif %}</td>{% endif %}
+        <td>{% badge u.status %}</td>
+        <td class="nowrap">{{ u.date_joined|date:"j M Y" }}</td>
+        <td class="actions"><a class="row-go" href="{% url 'dashboard:user_detail' u.pk %}" aria-label="View details" data-tip="View details">{% icon "chev-right" 18 %}</a></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% include "dashboard/partials/pager.html" %}
+  {% else %}
+    {% filters_active "q" "role" "status" "verified" as filtered %}
+    {% if filtered %}{% include "dashboard/partials/empty.html" with title="No accounts match these filters" text="Check the spelling or phone number, or clear the filters." clear_url="?" icon="people" %}
+    {% else %}{% include "dashboard/partials/empty.html" with title="No customers yet" text="Accounts appear here as soon as someone signs up in the app." icon="people" %}{% endif %}
+  {% endif %}
+</section>
+{% endblock %}

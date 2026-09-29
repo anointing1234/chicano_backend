@@ -1,0 +1,50 @@
+{% extends "dashboard/base.html" %}
+{# Documents review queue (compliance). Oldest pending first. #}
+{% load dashboard_tags %}
+{% block content %}
+  <div class="page-header"><div><h1>Documents</h1>
+    <p class="muted">Licences, insurance and registration for drivers (cars) and riders (bikes).</p></div></div>
+  <section class="card">
+    <form class="filters" method="get" data-autosubmit>
+      <select name="status" aria-label="Status">
+        <option value="pending" {% if status == "pending" %}selected{% endif %}>Waiting for review</option>
+        <option value="approved" {% if status == "approved" %}selected{% endif %}>Approved</option>
+        <option value="rejected" {% if status == "rejected" %}selected{% endif %}>Rejected</option>
+        <option value="expired" {% if status == "expired" %}selected{% endif %}>Expired</option>
+        <option value="all" {% if status == "all" %}selected{% endif %}>All</option>
+      </select>
+      <select name="doc_type" aria-label="Document type">
+        <option value="">Any document</option>
+        {% for v, l in doc_types %}<option value="{{ v }}" {% if doc_type == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select>
+    </form>
+    {% if page.object_list %}
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Document</th><th>Driver / rider</th><th>Type</th><th>Expires</th><th>Uploaded</th><th>File</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+      {% for d in page %}
+        <tr>
+          <td><strong>{{ d.get_doc_type_display }}</strong><div class="muted small">{{ d.number|default:"—" }}</div></td>
+          <td><a href="{% url 'dashboard:provider_detail' d.provider.pk %}">{{ d.provider.user.full_name }}</a></td>
+          <td>{% service_tag d.provider.service %}</td>
+          <td>{{ d.expires_at|date:"j M Y"|default:"—" }}</td>
+          <td>{{ d.created_at|ago }}</td>
+          <td><a href="{{ d.file.url }}" target="_blank" rel="noopener">Front</a>{% if d.back_file %} · <a href="{{ d.back_file.url }}" target="_blank" rel="noopener">Back</a>{% endif %}</td>
+          <td>{% badge d.status %}{% if d.rejection_reason %}<div class="muted small">{{ d.rejection_reason }}</div>{% endif %}</td>
+          <td class="right">{% if d.status == "pending" %}
+            <div class="row-actions">
+              <button class="btn btn-ghost btn-sm" data-dialog="doc-{{ d.pk }}">Reject</button>
+              <form method="post" action="{% url 'dashboard:document_action' d.pk 'approve' %}">{% csrf_token %}
+                <input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="btn btn-primary btn-sm">Approve</button></form>
+            </div>
+            {% url 'dashboard:document_action' d.pk 'reject' as reject_doc_url %}
+            {% include "dashboard/partials/reason_dialog.html" with prefix="doc-" id=d.pk action=reject_doc_url next=request.get_full_path heading="Reject "|add:d.get_doc_type_display text="The driver/rider sees this reason and can upload again." placeholder="e.g. Licence has expired, upload the renewed one" button="Reject" danger=True %}
+          {% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% include "dashboard/partials/pager.html" %}
+    {% else %}<div class="empty"><div class="empty-title">{% if status == "pending" %}All caught up{% else %}No documents{% endif %}</div>{% if status == "pending" %}<div class="muted">New uploads appear here.</div>{% endif %}</div>{% endif %}
+  </section>
+{% endblock %}

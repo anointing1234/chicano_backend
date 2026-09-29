@@ -1,0 +1,52 @@
+{% extends "dashboard/base.html" %}
+{# Drivers & Fleet dashboard (gold panel): supply side — drivers (cars), riders (bikes), documents, payouts. #}
+{% load dashboard_tags %}
+{% block title %}Driver dashboard{% endblock %}
+{% block panel %}driver{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Drivers &amp; fleet</h1><p>Drivers (Driver app · Cars) and riders (Rider app · Bikes). {{ period.label }}.</p></div>
+  {% include "dashboard/dashboards/_toolbar.html" %}
+</div>
+{% url 'dashboard:providers' as pu %}{% url 'dashboard:documents' as du %}{% url 'dashboard:payouts' as payu %}{% url 'dashboard:dispatch' as disu %}
+<div class="stats">
+  {% include "dashboard/partials/stat.html" with title="Registered drivers & riders" value=m.providers_total|num icon="wheel" desc="All applications, any status" href=pu link="Manage drivers & riders" %}
+  {% include "dashboard/partials/stat.html" with title="Approved" value=m.approved|num icon="check" desc="Allowed to go online" href=pu|add:"?status=approved" %}
+  {% include "dashboard/partials/stat.html" with title="Online now" value=m.online|num icon="radar" desc="Available or on a trip right now" href=pu|add:"?online=yes" %}
+  {% include "dashboard/partials/stat.html" with title="Awaiting approval" value=m.awaiting_approval|num icon="clock" desc="Applications under review" href=pu|add:"?status=under_review" link="Review applications" alert=m.awaiting_approval %}
+</div>
+<div class="stats">
+  {% include "dashboard/partials/stat.html" with title="Documents to review" value=m.documents_pending|num icon="doc" desc="Uploads waiting for compliance" href=du link="Open review queue" %}
+  {% include "dashboard/partials/stat.html" with title="Expiring in 30 days" value=m.documents_expiring|num icon="clock" desc="Approved licences/insurance about to expire" href=pu|add:"?docs=expiring" %}
+  {% include "dashboard/partials/stat.html" with title="Active trips" value=m.active_rides|num icon="route" desc="Accepted, at pickup or in progress" href=disu %}
+  {% include "dashboard/partials/stat.html" with title="Pending payouts" value=m.payouts_pending_amount|naira icon="bank" desc=m.payouts_desc href=payu %}
+</div>
+<div class="stats">
+  {% include "dashboard/partials/stat.html" with title="Trips completed" value=m.trips|num icon="check" desc="In the period" delta=m.trips_delta %}
+  {% include "dashboard/partials/stat.html" with title="Active drivers & riders" value=m.active_providers|num icon="people" desc="Completed at least one trip in the period" %}
+  {% include "dashboard/partials/stat.html" with title="Average rating" value=m.avg_rating_display icon="trophy" desc="Across approved drivers and riders" %}
+  {% if m.acceptance is not None %}{% include "dashboard/partials/stat.html" with title="Acceptance rate" value=m.acceptance|pct icon="gauge" desc="Offers accepted, all time, approved only" %}
+  {% else %}{% include "dashboard/partials/stat.html" with title="Acceptance rate" value="—" icon="gauge" desc="No offers sent yet" %}{% endif %}
+</div>
+<div class="grid grid-2">
+  <section class="card"><div class="card-head"><div><h2>Trips completed per day</h2><p>{{ period.label }}</p></div></div>
+    {% include "dashboard/partials/bar_chart.html" with series=m.chart_trips aria="Trips completed per day" %}</section>
+  <section class="card"><div class="card-head"><div><h2>New applications per day</h2><p>{{ period.label }}</p></div></div>
+    {% include "dashboard/partials/bar_chart.html" with series=m.chart_applications aria="New driver and rider applications per day" %}</section>
+</div>
+<div class="grid grid-main">
+  <section class="card">
+    <div class="card-head"><div><h2>Top performers</h2><p>Most trips completed in the period</p></div></div>
+    {% if m.top %}
+    <div class="table-wrap"><table class="table responsive">
+      <thead><tr><th>Name</th><th>Type</th><th class="right">Trips</th><th class="right">Fares</th></tr></thead>
+      <tbody>{% for t in m.top %}
+        <tr class="clickable" data-href="{% url 'dashboard:provider_detail' t.id %}">
+          <td class="primary"><a href="{% url 'dashboard:provider_detail' t.id %}">{{ t.name }}</a></td>
+          <td>{% service_tag t.service %}</td><td class="right">{{ t.trips|num }}</td><td class="right">{{ t.gross|naira }}</td></tr>
+      {% endfor %}</tbody></table></div>
+    {% else %}{% include "dashboard/partials/empty.html" with title="No completed trips in this period" icon="trophy" %}{% endif %}
+  </section>
+  <section class="card"><div class="card-head"><h2>Applications by status</h2></div>{% include "dashboard/partials/hbars.html" with rows=m.by_status %}</section>
+</div>
+{% endblock %}

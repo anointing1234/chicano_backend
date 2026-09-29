@@ -1,0 +1,11 @@
+{% comment %} Vertical bars. Include with `series` = [{label, value, display, height (0-100), title}] and optional `dense`. {% endcomment %}
+<div class="chart-bars{% if dense %} dense{% endif %}{% if series|length > 14 %} dense many{% endif %}" role="img" aria-label="{{ aria|default:'Bar chart' }}">
+  {% for d in series %}
+    <div class="chart-bar" title="{{ d.title }}">
+      <span class="val">{% if d.value %}{{ d.display }}{% endif %}</span>
+      <span class="bar" style="height: {{ d.height }}%"></span>
+      <span class="lbl">{{ d.label }}</span>
+    </div>
+  {% endfor %}
+</div>
+{% if series %}<table class="sr-only"><caption>{{ aria }}</caption>{% for d in series %}<tr><th>{{ d.title }}</th></tr>{% endfor %}</table>{% endif %}

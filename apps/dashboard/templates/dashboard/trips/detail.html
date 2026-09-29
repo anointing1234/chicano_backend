@@ -1,0 +1,91 @@
+{% extends "dashboard/base.html" %}
+{# One ride: route, people, money, payments, ratings, dispatch attempts, timeline; refund (full or partial) and cancel. #}
+{% load dashboard_tags %}
+{% block title %}Ride #{{ ride.pk|stringformat:"s"|slice:":8" }}{% endblock %}
+{% block panel %}customer{% endblock %}
+{% block crumbs %}<li><a href="{% url 'dashboard:trips' %}">Rides</a></li><li aria-current="page">#{{ ride.pk|stringformat:"s"|slice:":8" }}</li>{% endblock %}
+{% block heading %}Ride #{{ ride.pk|stringformat:"s"|slice:":8" }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>{{ ride.ride_type.name }} {% service_tag ride.service %}</h1>
+    <p>Requested {{ ride.requested_at|date:"D j M Y, H:i" }} · {{ ride.city }} · <span class="mono">{{ ride.pk }}</span></p>
+    <div class="chips">{% badge ride.status %}{% badge ride.payment_status %}{% if ride.needs_manual_dispatch and ride.status == "searching" %}{% badge "urgent" "Needs manual dispatch" %}{% endif %}</div></div>
+  <div class="page-actions">
+    {% if ride.status == "searching" and can.dispatch %}<a class="btn btn-primary" href="{% url 'dashboard:dispatch' %}?ride={{ ride.pk }}">{% icon "radar" 16 %} Assign manually</a>{% endif %}
+    {% if can.rides_cancel and can_cancel_now %}<button class="btn btn-danger" type="button" data-dialog="cancel">Cancel ride</button>{% endif %}
+    {% if can.rides_refund and can_refund_now %}<button class="btn btn-secondary" type="button" data-dialog="refund">{% icon "card" 16 %} Refund…</button>{% endif %}
+  </div>
+</div>
+
+<div class="grid grid-main">
+  <section class="card">
+    <div class="card-head"><h2>Trip</h2></div>
+    <ol class="timeline" style="margin-bottom:14px">
+      <li><strong>Pickup</strong> {{ ride.pickup_address }}{% if ride.pickup_note %}<span class="t-time">Note: {{ ride.pickup_note }}</span>{% endif %}</li>
+      {% for s in stops %}<li><strong>Stop {{ s.order }}</strong> {{ s.address }}</li>{% endfor %}
+      <li><strong>Drop-off</strong> {{ ride.dropoff_address }}</li>
+    </ol>
+    <dl class="kv">
+      <div><dt>Customer</dt><dd><a href="{% url 'dashboard:user_detail' ride.customer.pk %}">{{ ride.customer.full_name }}</a> · {{ ride.customer.phone }}</dd></div>
+      <div><dt>Driver / rider</dt><dd>{% if ride.provider %}<a href="{% url 'dashboard:provider_detail' ride.provider.pk %}">{{ ride.provider.user.full_name }}</a> · {{ ride.provider.user.phone }}{% else %}<span class="muted">Not assigned</span>{% endif %}</dd></div>
+      <div><dt>Vehicle</dt><dd>{% if ride.vehicle %}{{ ride.vehicle.color }} {{ ride.vehicle.make }} {{ ride.vehicle.model }} · <span class="mono">{{ ride.vehicle.plate_number }}</span>{% else %}—{% endif %}</dd></div>
+      <div><dt>Distance · time</dt><dd>{{ ride.distance_m|km }} · {{ ride.duration_s|minutes }} (estimated)</dd></div>
+      <div><dt>Map</dt><dd><a href="https://www.google.com/maps/dir/?api=1&origin={{ ride.pickup_lat }},{{ ride.pickup_lng }}&destination={{ ride.dropoff_lat }},{{ ride.dropoff_lng }}" target="_blank" rel="noopener">Open route in Google Maps</a></dd></div>
+      {% if ride.scheduled_for %}<div><dt>Scheduled for</dt><dd>{{ ride.scheduled_for|date:"D j M, H:i" }}</dd></div>{% endif %}
+      {% if ride.service == "bike" %}<div><dt>Helmet</dt><dd>Handed over {{ ride.helmet_handed_over_at|date:"H:i"|default:"—" }} · returned {{ ride.helmet_returned_at|date:"H:i"|default:"—" }}</dd></div>{% endif %}
+      {% if ride.status == "cancelled" %}<div><dt>Cancellation</dt><dd>By {{ ride.get_cancelled_by_display|default:ride.cancelled_by }} at {{ ride.cancelled_at|date:"H:i" }}{% if ride.cancel_reason %} — “{{ ride.cancel_reason }}”{% endif %}{% if ride.cancellation_fee_amount %} · fee {{ ride.cancellation_fee_amount|naira }}{% endif %}</dd></div>{% endif %}
+    </dl>
+  </section>
+  <section class="card">
+    <div class="card-head"><h2>Fare breakdown</h2></div>
+    <table class="money"><tbody>
+      <tr><td>Fare</td><td>{{ ride.gross_amount|naira:True }}</td></tr>
+      {% if ride.wait_charge_amount %}<tr><td class="muted">incl. waiting charge</td><td class="muted">{{ ride.wait_charge_amount|naira:True }}</td></tr>{% endif %}
+      {% if ride.discount_amount %}<tr><td>Promo {% if ride.quote.promo %}<span class="mono">{{ ride.quote.promo.code }}</span>{% endif %} <span class="muted">(platform-funded)</span></td><td>−{{ ride.discount_amount|naira:True }}</td></tr>{% endif %}
+      <tr class="total"><td>Customer pays ({{ ride.payment_method|label }})</td><td>{{ ride.total_amount|naira:True }}</td></tr>
+      {% if ride.tip_amount %}<tr><td>Tip (all to {% if ride.service == "car" %}driver{% else %}rider{% endif %})</td><td>{{ ride.tip_amount|naira:True }}</td></tr>{% endif %}
+      <tr><td>Platform commission</td><td>{{ ride.commission_amount|naira:True }}</td></tr>
+      {% if ride.refunded_amount %}<tr><td>Refunded</td><td class="neg">−{{ ride.refunded_amount|naira:True }}</td></tr>{% endif %}
+      {% if ride.payment_method == "cash" and ride.status == "completed" %}<tr><td>Cash collected</td><td>{% if ride.cash_collected_at %}{{ ride.cash_collected_at|date:"j M, H:i" }}{% else %}<span class="chip warn">Not yet</span>{% endif %}</td></tr>{% endif %}
+    </tbody></table>
+    {% if payments %}
+      <h3 class="section-title">Payment records</h3>
+      <ul class="list">{% for p in payments %}<li class="list-row"><div><div class="cell-main">{{ p.get_purpose_display }} · {{ p.method|label }}</div><div class="cell-sub">{{ p.created_at|date:"j M, H:i" }}{% if p.gateway_reference %} · <span class="mono">{{ p.gateway_reference }}</span>{% endif %}{% if p.failure_reason %} · {{ p.failure_reason }}{% endif %}</div></div>
+        <div class="right"><div class="num">{{ p.amount|naira:True }}</div>{% if p.status == "succeeded" %}{% badge "paid" "Succeeded" %}{% else %}{% badge "failed" %}{% endif %}</div></li>{% endfor %}</ul>
+    {% endif %}
+    {% for r in ratings %}<p class="small" style="margin-top:12px"><strong>{% if r.direction == "customer_to_provider" %}Customer rated the {% if ride.service == "car" %}driver{% else %}rider{% endif %}{% else %}{% if ride.service == "car" %}Driver{% else %}Rider{% endif %} rated the customer{% endif %}:</strong> {{ r.stars }}/5{% if r.tags %} · {{ r.tags|join:", " }}{% endif %}{% if r.comment %} · “{{ r.comment }}”{% endif %}</p>{% endfor %}
+  </section>
+</div>
+
+<div class="grid grid-2">
+  <section class="card">
+    <div class="card-head"><div><h2>Timeline</h2><p>Newest first</p></div></div>
+    {% if events %}<ol class="timeline">{% for e in events %}<li><strong>{{ e.event|label }}</strong>{% if e.actor %} <span class="muted small">by {{ e.actor.full_name }}</span>{% endif %}<span class="t-time">{{ e.created_at|date:"j M, H:i:s" }}</span></li>{% endfor %}</ol>
+    {% else %}{% include "dashboard/partials/empty.html" with title="No events recorded" icon="clock" %}{% endif %}
+  </section>
+  <section class="card">
+    <div class="card-head"><div><h2>Dispatch attempts</h2><p>Who was offered this ride</p></div></div>
+    {% for o in offers %}<div class="list-row"><div><div class="cell-main">{{ o.provider.user.full_name }}{% if o.is_manual %} <span class="chip">manual</span>{% endif %}</div><div class="cell-sub">{{ o.distance_to_pickup_m|km }} from pickup · offered {{ o.created_at|date:"H:i:s" }}</div></div>{% badge o.status %}</div>
+    {% empty %}{% include "dashboard/partials/empty.html" with title="No offers sent" icon="radar" %}{% endfor %}
+    {% if tickets %}<h3 class="section-title">Support tickets about this ride</h3>
+      {% for t in tickets %}<a class="list-row" href="{% url 'dashboard:ticket_detail' t.pk %}"><span>{{ t.subject }}</span>{% badge t.status %}</a>{% endfor %}{% endif %}
+  </section>
+</div>
+
+{% if can.rides_refund and can_refund_now %}
+<dialog id="refund" class="modal" aria-labelledby="refund-t">
+  <form method="post" action="{% url 'dashboard:trip_refund' ride.pk %}">{% csrf_token %}
+    <div class="dialog-head"><h2 id="refund-t">Refund this ride</h2><button type="button" class="dialog-close" data-close aria-label="Close">{% icon "x" 18 %}</button></div>
+    <div class="dialog-main">
+      <p>{% if ride.payment_method == "card" %}Goes back to the customer's card.{% else %}Goes to the customer's Chicano wallet.{% endif %} Up to <strong>{{ refundable|naira:True }}</strong> can be refunded. Enter the full amount for a full refund, or less for a partial refund.{% if request.user.staff_role == "support" %} Support can refund up to ₦5,000.{% endif %}</p>
+      <div class="field"><label for="{{ refund_form.amount.id_for_label }}">Amount <span class="req" aria-hidden="true">*</span></label><div class="money-input">{{ refund_form.amount }}</div></div>
+      <div class="field"><label for="{{ refund_form.reason.id_for_label }}">Reason <span class="req" aria-hidden="true">*</span></label>{{ refund_form.reason }}<span class="help">Stored in the audit log.</span></div>
+      <div class="field check">{{ refund_form.claw_back }}<div><label for="{{ refund_form.claw_back.id_for_label }}">Also deduct it from the {% if ride.service == "car" %}driver{% else %}rider{% endif %}'s earnings</label><span class="help">Only for a confirmed overcharge or wrong route.</span></div></div>
+    </div>
+    <div class="dialog-foot"><button type="button" class="btn btn-ghost" data-close>Cancel</button><button class="btn btn-primary" type="submit">Process refund</button></div>
+  </form>
+</dialog>
+{% endif %}
+{% url 'dashboard:trip_cancel' ride.pk as cancel_url %}
+{% include "dashboard/partials/reason_dialog.html" with id="cancel" action=cancel_url heading="Cancel this ride?" text="The customer isn't charged. Both sides get a notification." button="Cancel ride" danger=True %}
+{% endblock %}

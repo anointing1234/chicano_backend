@@ -1,0 +1,41 @@
+{% extends "dashboard/base.html" %}
+{# Promo codes: search, live/scheduled/ended, sorting; click a row to edit. #}
+{% load dashboard_tags %}
+{% block title %}Promo codes{% endblock %}
+{% block panel %}customer{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div><h1>Promo codes</h1><p>Discount codes customers enter before booking. Paid by Chicano Cruise — drivers and riders still earn the full fare.</p></div>
+  <div class="page-actions">{% include "dashboard/partials/service_switch.html" %}<a class="btn btn-primary" href="{% url 'dashboard:promo_new' %}">{% icon "plus" 16 %} New promo code</a></div>
+</div>
+<div class="stats">
+  {% include "dashboard/partials/stat.html" with title="Live codes" value=live_count|num icon="tag" desc="Active and within their dates" %}
+  {% include "dashboard/partials/stat.html" with title="Given away (all time)" value=spent_total|naira icon="money" desc="Total discounts across all codes" %}
+</div>
+<section class="card">
+  <form class="filters" method="get" data-autosubmit role="search">
+    <div class="f grow"><label for="q">Search</label><div class="search-field">{% icon "search" 16 %}<input id="q" type="search" name="q" value="{{ f.q|default:'' }}" placeholder="Code or description"></div></div>
+    {% include "dashboard/growth/_state_filter.html" %}
+    {% if f.sort %}<input type="hidden" name="sort" value="{{ f.sort }}">{% endif %}
+    <div class="filters-actions"><button class="btn btn-secondary" type="submit">{% icon "search" 16 %} Search</button>
+      {% filters_active "q" "state" as filtered %}{% if filtered %}<a class="btn btn-ghost" href="?">Clear</a>{% endif %}</div>
+  </form>
+  {% if page.object_list %}
+  <div class="table-wrap"><table class="table responsive">
+    <thead><tr>{% sort_th "code" "Code" %}<th>For</th><th>Discount</th>{% sort_th "uses" "Uses" "right" %}{% sort_th "spent" "Given away" "right" %}{% sort_th "ends" "Valid" %}<th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead>
+    <tbody>{% for p in page %}
+      <tr class="clickable" data-href="{% url 'dashboard:promo_edit' p.pk %}">
+        <td class="primary"><a class="mono" href="{% url 'dashboard:promo_edit' p.pk %}">{{ p.code }}</a><div class="cell-sub">{{ p.description }}</div></td>
+        <td>{% if p.service %}{% service_tag p.service %}{% else %}Cars + bikes{% endif %}{% if p.first_ride_only %}<div class="cell-sub">First ride only</div>{% endif %}</td>
+        <td>{% if p.discount_type == "percent" %}{{ p.value }}%{% if p.max_discount_amount %}<div class="cell-sub">max {{ p.max_discount_amount|naira }}</div>{% endif %}{% else %}{{ p.value|naira }}{% endif %}</td>
+        <td class="right">{{ p.redemptions_count|num }}{% if p.usage_limit %}<div class="cell-sub">of {{ p.usage_limit|num }}</div>{% endif %}</td>
+        <td class="right">{{ p.spent_amount|naira }}{% if p.budget_amount %}<div class="cell-sub">of {{ p.budget_amount|naira }}</div>{% endif %}</td>
+        <td class="nowrap">{{ p.valid_from|date:"j M" }} – {{ p.valid_to|date:"j M Y" }}</td>
+        <td>{% if not p.is_active %}{% badge "inactive" "Switched off" %}{% elif p.valid_to <= now %}{% badge "expired" "Ended" %}{% elif p.valid_from > now %}{% badge "scheduled" "Scheduled" %}{% else %}{% badge "active" "Live" %}{% endif %}</td>
+        <td class="actions"><a class="btn btn-ghost btn-sm" href="{% url 'dashboard:promo_edit' p.pk %}">{% icon "edit" 14 %} Edit</a></td>
+      </tr>{% endfor %}</tbody>
+  </table></div>
+  {% include "dashboard/partials/pager.html" %}
+  {% else %}{% url 'dashboard:promo_new' as new_url %}{% include "dashboard/partials/empty.html" with title="No promo codes here" text="Create a code to reward new or returning customers." action_url=new_url action_label="New promo code" clear_url="?" icon="tag" %}{% endif %}
+</section>
+{% endblock %}
