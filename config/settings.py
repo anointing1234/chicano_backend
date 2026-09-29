@@ -24,6 +24,7 @@ from pathlib import Path
 import os
 from dotenv import load_dotenv
 import dj_database_url
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
@@ -43,15 +44,20 @@ SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "dev-only-insecure-key-change-m
 DEBUG = env_bool("DJANGO_DEBUG", True)
 ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,0.0.0.0,10.0.2.2")
 
+# Render sets RENDER=true and RENDER_EXTERNAL_HOSTNAME=<service>.onrender.com on every deploy,
+# so the Render address is always allowed without editing DJANGO_ALLOWED_HOSTS.
+ON_RENDER = bool(os.environ.get("RENDER"))
+if os.environ.get("RENDER_EXTERNAL_HOSTNAME"):
+    ALLOWED_HOSTS.append(os.environ["RENDER_EXTERNAL_HOSTNAME"])
 
-# Origins allowed to submit POST requests (must include the scheme)
-CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS", "https://chicano-backend.onrender.com")
+# Origins allowed to submit POST requests to the dashboard (must include the scheme).
+# Both variable names are accepted; the Render address is added automatically.
+CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS", "https://chicano-backend.onrender.com") + env_list("CSRF_TRUSTED_ORIGINS", "")
+if os.environ.get("RENDER_EXTERNAL_HOSTNAME"):
+    CSRF_TRUSTED_ORIGINS.append(f"https://{os.environ['RENDER_EXTERNAL_HOSTNAME']}")
+CSRF_TRUSTED_ORIGINS = list(dict.fromkeys(CSRF_TRUSTED_ORIGINS))   # no duplicates
 # Render terminates HTTPS at its proxy; tell Django to trust that header
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-
-# Recommended for production over HTTPS
-CSRF_COOKIE_SECURE = True
-SESSION_COOKIE_SECURE = True
 
 
 
@@ -128,11 +134,9 @@ DATABASES = {
 AUTH_USER_MODEL = "accounts.User"
 LOGIN_URL = "dashboard:login"            # staff dashboard sign-in (mobile apps use OTP + JWT instead)
 SESSION_COOKIE_AGE = 60 * 60 * 12        # dashboard sessions last one working day
-SESSION_COOKIE_SECURE = not DEBUG        # HTTPS-only cookies in production
+SESSION_COOKIE_SECURE = not DEBUG        # HTTPS-only cookies in production (plain http works locally)
 CSRF_COOKIE_SECURE = not DEBUG
-# The dashboard's forms post from these origins when served over HTTPS behind a domain,
-# e.g. CSRF_TRUSTED_ORIGINS=https://admin.chicanocruise.com
-CSRF_TRUSTED_ORIGINS = env_list("CSRF_TRUSTED_ORIGINS", "")
+# (CSRF_TRUSTED_ORIGINS is set once, near the top.)
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 AUTH_PASSWORD_VALIDATORS = [
@@ -181,6 +185,9 @@ REST_FRAMEWORK = {
     # Basic abuse protection; OTP endpoints add their own stricter scope.
     "DEFAULT_THROTTLE_CLASSES": ["rest_framework.throttling.ScopedRateThrottle"],
     "DEFAULT_THROTTLE_RATES": {"otp": "5/min", "location": "120/min"},
+    # Behind a proxy (Render: 1) rate limits must use the real client IP, not a spoofable
+    # X-Forwarded-For header, or the 5-per-minute OTP limit can be bypassed.
+    "NUM_PROXIES": int(os.environ["NUM_PROXIES"]) if os.environ.get("NUM_PROXIES") else (1 if ON_RENDER else None),
 }
 
 # --------------------------------------------------------------------------- JWT
@@ -262,7 +269,15 @@ OTP_MAX_ATTEMPTS = 5
 # DEV ONLY: when true, /auth/otp/request/ returns the code in the response so the
 # Expo developer can log in without real SMS. Must be false in production.
 OTP_DEBUG_RETURN_CODE = env_bool("OTP_DEBUG_RETURN_CODE", DEBUG)
-SMS_BACKEND = os.environ.get("SMS_BACKEND", "console")          # console | twilio
+SMS_BACKEND = os.environ.get("SMS_BACKEND", "console")          # console (dev: code printed in the log) | termii | twilio
+TERMII_API_KEY = os.environ.get("TERMII_API_KEY", "")
+TERMII_SENDER_ID = os.environ.get("TERMII_SENDER_ID", "")        # your approved sender ID, e.g. "Chicano"
+TERMII_BASE_URL = os.environ.get("TERMII_BASE_URL", "https://v3.api.termii.com")   # use the base URL shown on your Termii dashboard
+TERMII_CHANNEL = os.environ.get("TERMII_CHANNEL", "dnd")         # dnd (recommended for codes) | generic
+TWILIO_ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID", "")
+TWILIO_AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN", "")
+TWILIO_FROM = os.environ.get("TWILIO_FROM", "")
+TWILIO_MESSAGING_SERVICE_SID = os.environ.get("TWILIO_MESSAGING_SERVICE_SID", "")
 PUSH_BACKEND = os.environ.get("PUSH_BACKEND", "console")        # console | expo (Expo push service) | fcm
 PAYMENT_GATEWAY = os.environ.get("PAYMENT_GATEWAY", "dummy")    # dummy | paystack
 DISPATCH_OFFER_SECONDS = int(os.environ.get("DISPATCH_OFFER_SECONDS", "15"))
@@ -278,6 +293,19 @@ LOGGING = {
     "handlers": {"console": {"class": "logging.StreamHandler"}},
     "root": {"handlers": ["console"], "level": "INFO"},
 }
+
+# --------------------------------------------------------------------------- safety checks
+# Refuse to start with settings that would be dangerous on a public server.
+if ON_RENDER and DEBUG:
+    raise ImproperlyConfigured("Set DJANGO_DEBUG=false on Render (DEBUG exposes error pages and login codes).")
+if not DEBUG and OTP_DEBUG_RETURN_CODE:
+    raise ImproperlyConfigured("OTP_DEBUG_RETURN_CODE must be false when DEBUG is off: it would let anyone log in as any user.")
+if not DEBUG and SECRET_KEY.startswith("dev-only"):
+    raise ImproperlyConfigured("Set DJANGO_SECRET_KEY to a long random value in production.")
+if SMS_BACKEND == "termii" and not (TERMII_API_KEY and TERMII_SENDER_ID):
+    raise ImproperlyConfigured("SMS_BACKEND=termii needs TERMII_API_KEY and TERMII_SENDER_ID.")
+if SMS_BACKEND == "twilio" and not (TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and (TWILIO_FROM or TWILIO_MESSAGING_SERVICE_SID)):
+    raise ImproperlyConfigured("SMS_BACKEND=twilio needs TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_FROM or TWILIO_MESSAGING_SERVICE_SID.")
 
 if not DEBUG:
     # Production hardening. Terminate TLS at the load balancer and forward the header.

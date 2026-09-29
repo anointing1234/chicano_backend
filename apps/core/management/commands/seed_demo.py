@@ -1,5 +1,6 @@
 """
 python manage.py seed_demo
+python manage.py seed_demo --reset     # delete the demo accounts first, then seed fresh
 
 Fills an empty database with everything needed to click through all four apps and the
 Super Admin locally. Safe to run more than once (it updates instead of duplicating).
@@ -22,6 +23,10 @@ Creates:
   * Promo codes WELCOME10 (10% off first ride, max ₦1,000) and BIKE300 (₦300 off bike rides)
   * Weekly incentives for drivers and riders
 
+--reset deletes only the demo accounts listed above (and everything that cascades from
+them: profiles, wallets, vehicles, documents, saved places...). Real users are untouched.
+The whole command runs in one transaction, so if a delete is blocked nothing changes.
+
 Mobile logins use OTP: POST /api/v1/auth/otp/request/ returns `debug_code` while
 OTP_DEBUG_RETURN_CODE=true, so no SMS is needed.
 
@@ -33,8 +38,9 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.core.management.base import BaseCommand
+from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
+from django.db.models import ProtectedError, Q
 from django.utils import timezone
 
 from apps.accounts.models import StaffRole
@@ -62,15 +68,40 @@ RIDE_TYPES = [
     ("bike", "bike", "Bike", "Beat the traffic. Helmet provided", 1, None, 1, (20000, 8000, 1000, 50000, 5000, 20000, 1500, 12)),
 ]
 
+# Every account/vehicle this command creates, so --reset can remove exactly these.
+STAFF_ROLES = [("admin", StaffRole.SUPER_ADMIN, "Amaka", "Nwosu"), ("ops", StaffRole.OPERATIONS, "Bayo", "Adeyemi"),
+               ("compliance", StaffRole.COMPLIANCE, "Ngozi", "Eze"), ("finance", StaffRole.FINANCE, "Femi", "Oladipo"),
+               ("support", StaffRole.SUPPORT, "Zainab", "Bello")]
+STAFF_PHONES = [f"+23400000000{i:02d}" for i in range(1, len(STAFF_ROLES) + 1)]
+STAFF_EMAIL_DOMAIN = "@chicanocruise.test"
+
+CUSTOMERS = [("+2348030000001", "Ada", "Okafor"), ("+2348030000002", "Tunde", "Bakare")]
+
+# phone, first, last, service, status, position, vehicle (make, model, year, colour, plate), ride types
+PROVIDERS = [
+    ("+2348050000001", "Emeka", "Obi", "car", ProviderStatus.APPROVED, LEKKI, ("Toyota", "Corolla", 2016, "Silver", "KJA482FT"), ["car_standard"]),
+    ("+2348050000002", "Chinedu", "Umeh", "car", ProviderStatus.APPROVED, VI, ("Toyota", "Sienna", 2020, "Black", "LND211AA"), ["car_standard", "car_xl", "car_premium"]),
+    ("+2348050000003", "Kelechi", "Ibe", "car", ProviderStatus.UNDER_REVIEW, IKEJA, ("Honda", "Accord", 2014, "Blue", "APP553KD"), []),
+    ("+2348070000001", "Musa", "Ibrahim", "bike", ProviderStatus.APPROVED, YABA, ("Bajaj", "Boxer 150", 2022, "Red", "YAB12QK"), ["bike"]),
+    ("+2348070000002", "Sani", "Abubakar", "bike", ProviderStatus.UNDER_REVIEW, YABA, ("TVS", "HLX 125", 2023, "Blue", "KTU77RB"), []),
+]
+
+DEMO_PHONES = STAFF_PHONES + [c[0] for c in CUSTOMERS] + [p[0] for p in PROVIDERS]
+DEMO_PLATES = [p[6][4] for p in PROVIDERS]
+
 
 class Command(BaseCommand):
     help = "Create demo ride types, fares, staff, customers, drivers, riders, promos and incentives."
 
     def add_arguments(self, parser):
         parser.add_argument("--password", default="ChicanoDemo2026!", help="Password for all demo staff accounts.")
+        parser.add_argument("--reset", action="store_true",
+                            help="Delete the demo accounts (and their cascaded data) before seeding.")
 
     @transaction.atomic
     def handle(self, *args, **opts):
+        if opts["reset"]:
+            self._reset()
         types = self._ride_types()
         self._staff(opts["password"])
         self._customers()
@@ -83,6 +114,21 @@ class Command(BaseCommand):
             "  Customer:    +2348030000001 (OTP debug_code is returned by /auth/otp/request/)\n"
             "  Driver:      +2348050000001   Rider: +2348070000001\n"
             "  Keep demo drivers/riders online: python manage.py dispatch_worker --keep-demo-fresh"))
+
+    # ------------------------------------------------------------------ reset
+    def _reset(self):
+        users = User.objects.filter(Q(phone__in=DEMO_PHONES) | Q(email__iendswith=STAFF_EMAIL_DOMAIN))
+        n_users = users.count()
+        try:
+            Vehicle.objects.filter(plate_number__in=DEMO_PLATES).delete()
+            _, per_model = users.delete()
+        except ProtectedError as exc:
+            blocker = type(next(iter(exc.protected_objects))).__name__
+            raise CommandError(
+                f"Can't delete demo users: {len(exc.protected_objects)} protected {blocker} row(s) still point at them. "
+                "Nothing was changed. For a full wipe use: python manage.py flush --no-input") from exc
+        extra = ", ".join(f"{label.split('.')[-1]}: {n}" for label, n in per_model.items() if n and not label.endswith(".User"))
+        self.stdout.write(self.style.WARNING(f"  reset: removed {n_users} demo user(s)" + (f" ({extra})" if extra else "")))
 
     # ------------------------------------------------------------------ pricing
     def _ride_types(self) -> dict:
@@ -106,20 +152,17 @@ class Command(BaseCommand):
         return user
 
     def _staff(self, password):
-        roles = [("admin", StaffRole.SUPER_ADMIN, "Amaka", "Nwosu"), ("ops", StaffRole.OPERATIONS, "Bayo", "Adeyemi"),
-                 ("compliance", StaffRole.COMPLIANCE, "Ngozi", "Eze"), ("finance", StaffRole.FINANCE, "Femi", "Oladipo"),
-                 ("support", StaffRole.SUPPORT, "Zainab", "Bello")]
-        for i, (handle, role, first, last) in enumerate(roles, start=1):
-            user = self._user(f"+23400000000{i:02d}", first, last, email=f"{handle}@chicanocruise.test")
-            user.email, user.is_staff, user.staff_role = f"{handle}@chicanocruise.test", True, role
+        for phone, (handle, role, first, last) in zip(STAFF_PHONES, STAFF_ROLES):
+            email = f"{handle}{STAFF_EMAIL_DOMAIN}"
+            user = self._user(phone, first, last, email=email)
+            user.email, user.is_staff, user.staff_role = email, True, role
             user.is_superuser = role == StaffRole.SUPER_ADMIN     # also lets them into /django-admin/
             user.set_password(password)
             user.save()
         self.stdout.write("  staff: admin, ops, compliance, finance, support @chicanocruise.test")
 
     def _customers(self):
-        people = [("+2348030000001", "Ada", "Okafor"), ("+2348030000002", "Tunde", "Bakare")]
-        for phone, first, last in people:
+        for phone, first, last in CUSTOMERS:
             user = self._user(phone, first, last, email=f"{first.lower()}@example.com")
             profile = ensure_customer_profile(user)
             SavedPlace.objects.get_or_create(customer=profile, label="home", defaults=dict(
@@ -134,15 +177,7 @@ class Command(BaseCommand):
 
     def _providers(self, types):
         now = timezone.now()
-        # phone, first, last, service, status, position, vehicle (make, model, year, colour, plate), ride types
-        rows = [
-            ("+2348050000001", "Emeka", "Obi", "car", ProviderStatus.APPROVED, LEKKI, ("Toyota", "Corolla", 2016, "Silver", "KJA482FT"), ["car_standard"]),
-            ("+2348050000002", "Chinedu", "Umeh", "car", ProviderStatus.APPROVED, VI, ("Toyota", "Sienna", 2020, "Black", "LND211AA"), ["car_standard", "car_xl", "car_premium"]),
-            ("+2348050000003", "Kelechi", "Ibe", "car", ProviderStatus.UNDER_REVIEW, IKEJA, ("Honda", "Accord", 2014, "Blue", "APP553KD"), []),
-            ("+2348070000001", "Musa", "Ibrahim", "bike", ProviderStatus.APPROVED, YABA, ("Bajaj", "Boxer 150", 2022, "Red", "YAB12QK"), ["bike"]),
-            ("+2348070000002", "Sani", "Abubakar", "bike", ProviderStatus.UNDER_REVIEW, YABA, ("TVS", "HLX 125", 2023, "Blue", "KTU77RB"), []),
-        ]
-        for phone, first, last, service, status, pos, veh, codes in rows:
+        for phone, first, last, service, status, pos, veh, codes in PROVIDERS:
             user = self._user(phone, first, last)
             ensure_wallet(user)
             approved = status == ProviderStatus.APPROVED

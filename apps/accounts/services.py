@@ -46,14 +46,55 @@ def _hash_code(phone: str, code: str) -> str:
 
 def send_sms(phone: str, message: str) -> None:
     """
-    SMS gateway. `console` prints to the server log (development).
-    Production: set SMS_BACKEND=twilio and implement the call below (Twilio Verify,
-    Termii and Africa's Talking all work well for Nigerian numbers).
+    Send an SMS. SMS_BACKEND chooses the provider:
+      console  development only: the message (with the code) is printed in the server log, nothing is sent
+      termii   Termii (Nigeria): TERMII_API_KEY, TERMII_SENDER_ID, optional TERMII_BASE_URL, TERMII_CHANNEL
+      twilio   Twilio: TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, and TWILIO_FROM (number) or TWILIO_MESSAGING_SERVICE_SID
+    Raises ApiError(sms_failed) if the provider rejects the message, so the app can say so.
     """
-    if settings.SMS_BACKEND == "console":
+    backend = settings.SMS_BACKEND
+    if backend == "console":
         log.info("[SMS to %s] %s", phone, message)
         return
-    raise NotImplementedError("Configure an SMS provider in apps/accounts/services.send_sms")
+
+    import requests   # local import: only needed when a real provider is configured
+
+    try:
+        if backend == "termii":
+            res = requests.post(
+                f"{settings.TERMII_BASE_URL.rstrip('/')}/api/sms/send",
+                json={
+                    "api_key": settings.TERMII_API_KEY,
+                    "to": phone.lstrip("+"),          # Termii wants 2348012345678
+                    "from": settings.TERMII_SENDER_ID,
+                    "sms": message,
+                    "type": "plain",
+                    "channel": settings.TERMII_CHANNEL,   # "dnd" reaches numbers on Do-Not-Disturb (needs an approved sender ID)
+                },
+                timeout=15,
+            )
+        elif backend == "twilio":
+            data = {"To": phone, "Body": message}
+            if settings.TWILIO_MESSAGING_SERVICE_SID:
+                data["MessagingServiceSid"] = settings.TWILIO_MESSAGING_SERVICE_SID
+            else:
+                data["From"] = settings.TWILIO_FROM
+            res = requests.post(
+                f"https://api.twilio.com/2010-04-01/Accounts/{settings.TWILIO_ACCOUNT_SID}/Messages.json",
+                data=data,
+                auth=(settings.TWILIO_ACCOUNT_SID, settings.TWILIO_AUTH_TOKEN),
+                timeout=15,
+            )
+        else:
+            raise ValueError(f"Unknown SMS_BACKEND {backend!r}")
+    except requests.RequestException as exc:
+        log.error("SMS to %s failed: %s", phone, exc.__class__.__name__)
+        raise ApiError("sms_failed", "We couldn't send the code right now. Please try again in a moment.", status_code=502) from exc
+
+    if res.status_code >= 300:
+        # Log the provider's reason (never the message itself: it contains the code).
+        log.error("SMS to %s rejected by %s: HTTP %s %s", phone, backend, res.status_code, res.text[:300])
+        raise ApiError("sms_failed", "We couldn't send the code right now. Please try again in a moment.", status_code=502)
 
 
 def issue_otp(phone: str, purpose: str = OtpPurpose.LOGIN) -> tuple[OTPCode, str]:
