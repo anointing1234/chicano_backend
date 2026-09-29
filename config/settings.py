@@ -59,7 +59,7 @@ CSRF_TRUSTED_ORIGINS = list(dict.fromkeys(CSRF_TRUSTED_ORIGINS))   # no duplicat
 # Render terminates HTTPS at its proxy; tell Django to trust that header
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
-
+#rekdjajflajfljalkjakljlajlkjakljaklj
 
 INSTALLED_APPS = [
     # Django
