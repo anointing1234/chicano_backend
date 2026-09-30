@@ -1,0 +1,43 @@
+# Local development stack:  docker compose up --build
+#   API + Swagger:  http://localhost:8000/api/docs/
+#   Postgres:       localhost:5432  (chicano / chicano)
+# Then, once:       docker compose exec api python manage.py seed_demo
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: chicano
+      POSTGRES_USER: chicano
+      POSTGRES_PASSWORD: chicano
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U chicano"]
+      interval: 3s
+      retries: 20
+
+  api:
+    build: ./backend
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgres://chicano:chicano@db:5432/chicano
+    ports: ["8000:8000"]          # 0.0.0.0 so phones on the same Wi-Fi can reach it
+    volumes: ["./backend:/app"]    # live reload while developing
+    depends_on:
+      db: {condition: service_healthy}
+
+  # Expires 15 s offers and times out searches even when no app is polling.
+  worker:
+    build: ./backend
+    env_file: ./backend/.env
+    environment:
+      DATABASE_URL: postgres://chicano:chicano@db:5432/chicano
+      AUTO_MAKEMIGRATIONS: "false"   # the api container owns migrations
+      SKIP_MIGRATE: "true"
+    command: ["python", "manage.py", "dispatch_worker", "--keep-demo-fresh"]
+    volumes: ["./backend:/app"]
+    depends_on:
+      api: {condition: service_started}
+
+volumes:
+  pgdata:
