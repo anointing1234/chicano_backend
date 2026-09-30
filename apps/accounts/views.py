@@ -55,13 +55,45 @@ class OtpRequestView(APIView):
                                                     "resend_after_seconds": 30, "debug_code": "482917"}, response_only=True)],
     )
     def post(self, request):
+        import os
+        import secrets
+        from datetime import timedelta
+
+        from django.conf import settings
+
+        from .models import OTPCode, OtpPurpose
+
         data = OtpRequestSerializer(data=request.data)
         data.is_valid(raise_exception=True)
         phone = services.normalize_phone(data.validated_data["phone"])
-        from django.conf import settings
-        _, code = services.issue_otp(phone)
+
+        # TEMPORARY (until the Termii sender ID is approved): send the code back in the response
+        # so the app can log in. Turn it off on Render with OTP_RETURN_CODE_IN_RESPONSE=false.
+        # While this is on, anyone who knows a phone number can log in as that user.
+        return_code = settings.OTP_DEBUG_RETURN_CODE or os.environ.get(
+            "OTP_RETURN_CODE_IN_RESPONSE", "true").strip().lower() in ("1", "true", "yes", "on")
+
+        # Same steps as services.issue_otp: invalidate older codes, save a new hashed code, send it.
+        code = "".join(secrets.choice("0123456789") for _ in range(settings.OTP_LENGTH))
+        with transaction.atomic():
+            OTPCode.objects.filter(phone=phone, purpose=OtpPurpose.LOGIN, consumed_at__isnull=True).update(
+                consumed_at=timezone.now())
+            OTPCode.objects.create(
+                phone=phone,
+                purpose=OtpPurpose.LOGIN,
+                code_hash=services._hash_code(phone, code),
+                expires_at=timezone.now() + timedelta(seconds=settings.OTP_TTL_SECONDS),
+            )
+        try:
+            services.send_sms(phone, f"Your Chicano Cruise code is {code}. "
+                                     f"It expires in {settings.OTP_TTL_SECONDS // 60} minutes.")
+        except ApiError as exc:
+            # If the SMS fails but the code is being returned, the app can still log in.
+            if not (return_code and exc.error_code == "sms_failed"):
+                raise
+
         body = {"phone": phone, "expires_in_seconds": settings.OTP_TTL_SECONDS, "resend_after_seconds": 30}
-        if settings.OTP_DEBUG_RETURN_CODE:
+        if return_code:
             body["debug_code"] = code
         return Response(body)
 
