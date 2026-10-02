@@ -1,7 +1,7 @@
-{# All / Cars / Bikes switch (remembered in the session; see access.current_service). #}
+{# The one All / Cars / Bikes switch (top bar on desktop/tablet, under the header on phones). Remembered in the session; see access.current_service. #}
 {% load dashboard_tags %}
-<div class="segmented" role="group" aria-label="Service">
-  <a class="seg{% if service == 'all' %} active{% endif %}" href="{% query service='all' page='' %}"{% if service == 'all' %} aria-pressed="true"{% endif %}>All</a>
-  <a class="seg{% if service == 'car' %} active{% endif %}" href="{% query service='car' page='' %}"{% if service == 'car' %} aria-pressed="true"{% endif %}>{% icon "car" 15 %}Cars</a>
-  <a class="seg{% if service == 'bike' %} active{% endif %}" href="{% query service='bike' page='' %}"{% if service == 'bike' %} aria-pressed="true"{% endif %}>{% icon "bike" 15 %}Bikes</a>
+<div class="svc-switch" role="group" aria-label="Service">
+  <a href="{% query service='all' page='' kind='' %}" aria-pressed="{% if service == 'all' %}true{% else %}false{% endif %}">All</a>
+  <a href="{% query service='car' page='' kind='' %}" aria-pressed="{% if service == 'car' %}true{% else %}false{% endif %}">{% icon "car" 15 %}Cars</a>
+  <a href="{% query service='bike' page='' kind='' %}" aria-pressed="{% if service == 'bike' %}true{% else %}false{% endif %}">{% icon "bike" 15 %}Bikes</a>
 </div>

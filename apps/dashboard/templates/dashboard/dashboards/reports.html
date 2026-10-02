@@ -6,7 +6,6 @@
 <div class="page-header">
   <div><h1>Reports &amp; analytics</h1><p>{{ period.label }}{% if city %} · {{ city }}{% endif %}. Completed trips are counted on the day they finished.</p></div>
   <div class="page-actions">
-    {% include "dashboard/partials/service_switch.html" %}
     {% if cities|length > 1 %}
     <form method="get" data-autosubmit class="range">
       {% for k, v in request.GET.items %}{% if k != "city" %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}{% endfor %}

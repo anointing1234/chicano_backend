@@ -10,6 +10,7 @@ nothing is estimated or hard-coded. Views stay thin: they pick a Period and call
 """
 from datetime import timedelta
 
+from django.utils.text import Truncator
 from django.contrib.auth import get_user_model
 from django.db.models import Avg, Count, Q, Sum
 from django.db.models.functions import TruncDate
@@ -350,7 +351,7 @@ def overview_board(period: Period, service: str | None) -> dict:
         hours = int((now - oldest.created_at).total_seconds() // 3600)
         n = over_sla.count()
         attention.append({"tone": "bad", "icon": "alert", "title": f"{n} ticket{'s' if n != 1 else ''} past 24 h SLA",
-                          "sub": f"Oldest: {oldest.subject[:22].lower()}, {hours} h", "url": "support", "query": "", "link": "Open", "count": n})
+                          "sub": f"Oldest: {Truncator(oldest.subject).chars(32)} · {hours} h", "url": "support", "query": "", "link": "Open", "count": n})
     failed = rides.filter(payment_status="failed")
     if failed.exists():
         n = failed.count()

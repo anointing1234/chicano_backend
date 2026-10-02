@@ -9,6 +9,7 @@ Dashboard actions added with the redesign (A01–A08). Each one is posted throug
     test_dispatch_assign_bike_delivery  a bike delivery in the Dispatch queue shows the package and can be assigned
 """
 
+import re
 from datetime import timedelta
 
 import pytest
@@ -162,3 +163,18 @@ def test_dispatch_assign_bike_delivery(demo, user_by_phone, client_for):
     r = ops.post(reverse("dashboard:dispatch_assign", args=[ride["id"]]), {"provider_id": str(musa.pk)}, follow=True)
     assert r.status_code == 200
     assert obj.offers.filter(provider=musa, is_manual=True).exists()
+
+
+def test_one_service_switch(demo):
+    """The top bar holds the only All / Cars / Bikes switch; sidebar Riders/Drivers links and old ?kind= links use it."""
+    admin = signed_in("admin")
+    for name in ("providers", "trips", "settings", "reports", "incentives", "documents", "overview", "driver_dashboard"):
+        page = admin.get(reverse(f"dashboard:{name}") + ("?list=1" if name == "documents" else "")).content.decode()
+        assert page.count('class="svc-switch"') == 2, name                 # top bar + phone header copy, nothing in the page body
+        assert 'class="segmented" role="group" aria-label="Service"' not in page, name
+    page = admin.get(reverse("dashboard:providers") + "?service=bike").content.decode()
+    assert "Musa Ibrahim" in page and "Emeka Obi" not in page
+    assert re.search(r'href="\?service=bike" aria-pressed="true"', page)       # the switch shows Bikes as chosen
+    page = admin.get(reverse("dashboard:providers") + "?kind=car").content.decode()      # old link
+    assert "Emeka Obi" in page and "Musa Ibrahim" not in page
+    assert admin.session["dashboard_service"] == "car"

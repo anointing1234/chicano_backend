@@ -6,8 +6,7 @@
 <div class="page-header">
   <div><h1>Fares, ride types &amp; zones</h1>
     <p>{% if can.settings_edit %}Changes apply to new fare estimates immediately and are recorded in the audit log.{% else %}View only — ask a super admin to change prices.{% endif %}</p></div>
-  <div class="page-actions">{% include "dashboard/partials/service_switch.html" %}
-    {% if can.settings_edit %}{% if tab == "fares" %}<a class="btn btn-primary" href="{% url 'dashboard:fare_new' %}">{% icon "plus" 16 %} New fare rule</a>
+  <div class="page-actions">    {% if can.settings_edit %}{% if tab == "fares" %}<a class="btn btn-primary" href="{% url 'dashboard:fare_new' %}">{% icon "plus" 16 %} New fare rule</a>
     {% elif tab == "ride-types" %}<a class="btn btn-primary" href="{% url 'dashboard:ride_type_new' %}">{% icon "plus" 16 %} New ride type</a>
     {% elif tab == "zones" %}<a class="btn btn-primary" href="{% url 'dashboard:zone_new' %}">{% icon "plus" 16 %} New zone</a>{% endif %}{% endif %}</div>
 </div>
@@ -19,7 +18,7 @@
 <section class="card">
 {% if tab == "fares" %}
   <p class="small muted">Fare = base + per km × distance + per minute × time + booking fee, at least the minimum, rounded to ₦50. Commission is the platform's share of each completed fare.</p>
-  {% if rows %}<div class="table-wrap"><table class="table responsive">
+  {% if rows %}<div class="table-wrap"><table class="table responsive" data-lo="2,5,7">
     <thead><tr><th>Ride type</th><th>City</th><th class="right">Base</th><th class="right">Per km</th><th class="right">Per min</th><th class="right">Minimum</th><th class="right">Cancel fee</th><th class="right">Commission</th><th>Status</th>{% if can.settings_edit %}<th><span class="sr-only">Actions</span></th>{% endif %}</tr></thead>
     <tbody>{% for r in rows %}
       <tr{% if can.settings_edit %} class="clickable" data-href="{% url 'dashboard:fare_edit' r.pk %}"{% endif %}>

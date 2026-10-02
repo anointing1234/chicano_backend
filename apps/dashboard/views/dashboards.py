@@ -78,8 +78,8 @@ def customer_dashboard(request):
 def driver_dashboard(request):
     """Fleet board (A05): drivers & riders online, approvals, issues, earnings, acceptance, map, pipeline, expiring documents."""
     period = get_period(request, default="today")
-    pipe = request.GET.get("pipe") if request.GET.get("pipe") in ("car", "bike") else None
-    ctx = {"period": period, "ranges": RANGES, "pipe": pipe or "all", "f": metrics.fleet_board(period, current_service(request), pipe)}
+    service = current_service(request)        # the top-bar All / Cars / Bikes switch also scopes the pipeline
+    ctx = {"period": period, "ranges": RANGES, "f": metrics.fleet_board(period, service, service)}
     if request.GET.get("export") == "csv":
         f = ctx["f"]
         return csv_response(f"chicano-fleet-{period.date_from}.csv", ["metric", "value", "detail"], [

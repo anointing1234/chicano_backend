@@ -58,7 +58,7 @@
         <td class="check"><input type="checkbox" name="ids" value="{{ u.pk }}" form="bulk-form" aria-label="Select {{ u.full_name|default:u.phone }}"></td>
         <td class="primary"><div class="person"><span class="avatar" aria-hidden="true">{{ u.full_name|default:u.phone|initials }}</span>
           <div><a class="cell-main" href="{% if customers_only %}{% query user=u.pk %}{% else %}{% url 'dashboard:user_detail' u.pk %}{% endif %}">{{ u.full_name|default:"No name yet" }}</a><div class="cell-sub">{{ u.email|default:"no email" }}</div></div></div></td>
-        <td class="mono nowrap">{{ u.phone|spaced_phone|truncatechars:15 }}</td>
+        <td class="mono nowrap">{{ u.phone|spaced_phone }}</td>
         <td>{% badge u.status %}</td>
         <td>{% if u.phone_verified_at %}<span class="badge badge-info nodot">Verified</span>{% else %}<span class="badge badge-neutral nodot">Unverified</span>{% endif %}</td>
         {% if customers_only %}

@@ -6,8 +6,7 @@
 {% block content %}
 <div class="page-header">
   <div><h1>Rides</h1><p>Search by ride ID, customer or driver name/phone, plate or address.</p></div>
-  <div class="page-actions">{% include "dashboard/partials/service_switch.html" %}
-    <a class="btn btn-secondary" href="{% query export='csv' page='' %}">{% icon "download" 16 %} Export CSV</a></div>
+  <div class="page-actions">    <a class="btn btn-secondary" href="{% query export='csv' page='' %}">{% icon "download" 16 %} Export CSV</a></div>
 </div>
 <section class="card">
   <form class="filters" method="get" data-autosubmit role="search">
@@ -29,7 +28,7 @@
       {% filters_active "q" "status" "attention" "ride_type" "city" "payment" "pay_status" "from" "to" as filtered %}{% if filtered %}<a class="btn btn-ghost" href="?">Clear</a>{% endif %}</div>
   </form>
   {% if page.object_list %}
-  <div class="table-wrap"><table class="table responsive">
+  <div class="table-wrap"><table class="table responsive" data-lo="2">
     <thead><tr>{% sort_th "requested" "Requested" %}<th>Type</th><th>Route</th><th>Customer</th><th>Driver / rider</th>{% sort_th "fare" "Fare" "right" %}{% sort_th "status" "Status" %}<th><span class="sr-only">Actions</span></th></tr></thead>
     <tbody>
     {% for r in page %}

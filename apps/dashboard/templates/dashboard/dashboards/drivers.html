@@ -14,8 +14,8 @@
 
 {% url 'dashboard:providers' as pu %}{% url 'dashboard:documents' as du %}{% url 'dashboard:payouts' as payu %}
 <div class="stats">
-  {% include "dashboard/partials/stat.html" with title="Online drivers · cars" icon="car" value=f.on_car|num desc=f.on_car_desc href=pu|add:"?kind=car&online=yes" %}
-  {% include "dashboard/partials/stat.html" with title="Online riders · bikes" icon="bike" value=f.on_bike|num desc=f.on_bike_desc href=pu|add:"?kind=bike&online=yes" %}
+  {% include "dashboard/partials/stat.html" with title="Online drivers · cars" icon="car" value=f.on_car|num desc=f.on_car_desc href=pu|add:"?service=car&online=yes" %}
+  {% include "dashboard/partials/stat.html" with title="Online riders · bikes" icon="bike" value=f.on_bike|num desc=f.on_bike_desc href=pu|add:"?service=bike&online=yes" %}
   {% include "dashboard/partials/stat.html" with title="Pending approvals" icon="hourglass" value=f.pending|num d=f.pending_delta desc=f.pending_desc alert=f.pending href=pu|add:"?status=under_review" %}
   {% include "dashboard/partials/stat.html" with title="Document / vehicle issues" icon="alert" value=f.issues|num d=f.issues_delta desc=f.issues_desc alert=f.issues href=pu|add:"?docs=expiring" %}
   {% include "dashboard/partials/stat.html" with title=f.earn_title icon="wallet" value=f.earned d=f.earned_delta desc=f.earned_desc %}
@@ -34,15 +34,10 @@
   </section>
 
   <section class="card" aria-labelledby="pipe-h">
-    <div class="card-head"><div><h2 id="pipe-h">Onboarding pipeline</h2><p>Applications in progress, last 30 days</p></div>
-      <div class="segmented" role="group" aria-label="Service">
-        <a class="seg{% if pipe == 'all' %} active{% endif %}" href="{% query pipe='' %}">All</a>
-        <a class="seg{% if pipe == 'car' %} active{% endif %}" href="{% query pipe='car' %}">{% icon "car" 15 %}Cars</a>
-        <a class="seg{% if pipe == 'bike' %} active{% endif %}" href="{% query pipe='bike' %}">{% icon "bike" 15 %}Bikes</a>
-      </div></div>
+    <div class="card-head"><div><h2 id="pipe-h">Onboarding pipeline</h2><p>Applications in progress, last 30 days{% if service == 'car' %} · cars{% elif service == 'bike' %} · bikes{% endif %}</p></div></div>
     {% if f.pipeline_applied %}
       <div class="hbars">
-        {% for s in f.pipeline %}<div class="hbar"><span>{{ s.label }}</span><div class="hbar-track"><div class="hbar-fill{% if pipe == 'bike' %} bike{% endif %}" style="width:{{ s.pct }}%"></div></div><strong>{{ s.n|num }}</strong></div>{% endfor %}
+        {% for s in f.pipeline %}<div class="hbar"><span>{{ s.label }}</span><div class="hbar-track"><div class="hbar-fill{% if service == 'bike' %} bike{% endif %}" style="width:{{ s.pct }}%"></div></div><strong>{{ s.n|num }}</strong></div>{% endfor %}
       </div>
     {% else %}{% include "dashboard/partials/empty.html" with title="No applications in the last 30 days" text="New sign-ups from the Driver and Rider apps show here." icon="people" %}{% endif %}
   </section>

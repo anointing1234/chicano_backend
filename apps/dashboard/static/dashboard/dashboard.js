@@ -632,6 +632,12 @@
   function labelTables(scope) {
     (scope || document).querySelectorAll("table.responsive").forEach(function (table) {
       var heads = Array.prototype.map.call(table.querySelectorAll("thead th"), function (th) { return th.textContent.trim(); });
+      // data-lo="2,8": low-priority columns (1-based) hidden on laptops (1024–1439) so the table fits without scrolling
+      var lo = (table.getAttribute("data-lo") || "").split(",").map(function (n) { return parseInt(n, 10) - 1; }).filter(function (n) { return n >= 0; });
+      if (lo.length) table.querySelectorAll("tr").forEach(function (tr) {
+        if (tr.children.length < heads.length) return;            // colspan rows (empty states, group headings)
+        lo.forEach(function (i) { if (tr.children[i]) tr.children[i].classList.add("lo"); });
+      });
       table.querySelectorAll("tbody tr").forEach(function (tr) {
         Array.prototype.forEach.call(tr.children, function (td, i) {
           if (heads[i] && !td.hasAttribute("data-label")) td.setAttribute("data-label", heads[i]);
@@ -684,6 +690,20 @@
     });
   }
 
+  // A wide table that still doesn't fit its box (very long addresses or names) becomes cards instead of scrolling sideways.
+  function fitTables() {
+    document.querySelectorAll("table.responsive:not(.tablet-compact)").forEach(function (table) {
+      var wrap = table.closest(".table-wrap");
+      if (!wrap) return;
+      table.classList.remove("as-cards");
+      if (window.innerWidth >= 1024 && wrap.scrollWidth > wrap.clientWidth + 2) table.classList.add("as-cards");
+    });
+  }
+  var fitTimer;
+  window.addEventListener("resize", function () { clearTimeout(fitTimer); fitTimer = setTimeout(fitTables, 120); });
+  window.addEventListener("load", fitTables);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitTables);
+
   /* ================================================================ live refresh of fragments */
   function enhance(scope) {
     enhanceSelects(scope);
@@ -691,6 +711,7 @@
     initDialogs(scope);
     initBulk(scope);
     labelTables(scope);
+    fitTables();
   }
   function poll(el) {
     var every = parseInt(el.getAttribute("data-every") || "10000", 10);

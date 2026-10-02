@@ -17,7 +17,21 @@
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Figtree:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
   {% block head %}{% endblock %}
-  <link rel="stylesheet" href="{% static 'dashboard/dashboard.css' %}?v=4">
+  <link rel="stylesheet" href="{% static 'dashboard/dashboard.css' %}?v=9">
+  {# Mobile safety rules, inline so they apply even when an older dashboard.css is still cached or collected. #}
+  <style>
+    @media (max-width: 1023px) {
+      html, body { max-width: 100%; overflow-x: clip; }
+      .main, .content, .card, .table-wrap { min-width: 0; max-width: 100%; }
+      .table.responsive:not(.tablet-compact) td { overflow-wrap: anywhere; }
+      .table.responsive:not(.tablet-compact) td > *, .table.responsive:not(.tablet-compact) .cell > * { min-width: 0; max-width: 100%; }
+      .table.responsive:not(.tablet-compact) td > .route, .table.responsive:not(.tablet-compact) td > .cell { justify-self: stretch; width: 100%; }
+      .route { max-width: none; }
+      .route span, .table .route span { white-space: normal !important; overflow: visible !important; text-overflow: clip !important; overflow-wrap: anywhere; }
+      .table.responsive:not(.tablet-compact) td::before { overflow-wrap: normal; word-break: normal; }
+      .filters input[type=date] { min-width: 0; max-width: 100%; }
+    }
+  </style>
 </head>
 <body class="{% block body_class %}{% endblock %}">
 <a class="skip-link" href="#main">Skip to content</a>
@@ -74,6 +88,7 @@
       <label class="sr-only" for="m-search">Search users, riders, drivers, trips, plates</label>
       <input id="m-search" type="search" name="q" autocomplete="off" placeholder="Search users, riders, drivers, trips">
     </form>
+    <div class="mobile-svc">{% include "dashboard/partials/service_switch.html" %}</div>
 
     <header class="topbar">
       <form class="topbar-search" role="search" method="get" action="{% url 'dashboard:search' %}">
@@ -84,11 +99,7 @@
         <span class="kbd" aria-hidden="true">Ctrl K</span>
       </form>
       <div class="topbar-spacer"></div>
-      <div class="svc-switch" role="group" aria-label="Service">
-        <a href="{% query service='all' page='' %}" aria-pressed="{% if service == 'all' %}true{% else %}false{% endif %}">All</a>
-        <a href="{% query service='car' page='' %}" aria-pressed="{% if service == 'car' %}true{% else %}false{% endif %}">{% icon "car" 15 %}Cars</a>
-        <a href="{% query service='bike' page='' %}" aria-pressed="{% if service == 'bike' %}true{% else %}false{% endif %}">{% icon "bike" 15 %}Bikes</a>
-      </div>
+      {% include "dashboard/partials/service_switch.html" %}
       <details class="menu city-btn" data-align="end">
         <summary>{% icon "globe" 16 %}{{ cities.0 }}<span class="chev">{% icon "chev" 16 %}</span></summary>
         <div class="menu-panel narrow" role="menu" aria-label="Service cities">
@@ -138,7 +149,7 @@
       <span>{{ message }}</span><button class="toast-close" type="button" aria-label="Dismiss">{% icon "x" 14 %}</button></div>
   {% endfor %}
 </div>
-<script src="{% static 'dashboard/dashboard.js' %}?v=4"></script>
+<script src="{% static 'dashboard/dashboard.js' %}?v=9"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

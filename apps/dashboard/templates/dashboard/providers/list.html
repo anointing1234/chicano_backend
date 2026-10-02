@@ -6,8 +6,7 @@
 {% block content %}
 <div class="page-header">
   <div><h1>Manage drivers &amp; riders</h1><p>Drivers use the Driver app (cars); riders use the Rider app (bikes).</p></div>
-  <div class="page-actions">{% include "dashboard/partials/service_switch.html" %}
-    {% if can.providers_approve %}<a class="btn btn-primary" href="{% url 'dashboard:documents' %}">{% icon "doc" 16 %} Review documents</a>{% endif %}</div>
+  <div class="page-actions">    {% if can.providers_approve %}<a class="btn btn-primary" href="{% url 'dashboard:documents' %}">{% icon "doc" 16 %} Review documents</a>{% endif %}</div>
 </div>
 <section class="card">
   <form class="filters" method="get" data-autosubmit role="search">
@@ -26,7 +25,7 @@
       {% filters_active "q" "status" "online" "city" "docs" as filtered %}{% if filtered %}<a class="btn btn-ghost" href="?">Clear</a>{% endif %}</div>
   </form>
   {% if page.object_list %}
-  <div class="table-wrap"><table class="table responsive">
+  <div class="table-wrap"><table class="table responsive" data-lo="2,8,9">
     <thead><tr>{% sort_th "name" "Name" %}<th>Type</th><th>Vehicle</th>{% sort_th "status" "Status" %}<th>Availability</th>{% sort_th "rating" "Rating" "right" %}{% sort_th "trips" "Trips" "right" %}<th class="right">Acceptance</th>{% sort_th "joined" "Applied" %}<th><span class="sr-only">Actions</span></th></tr></thead>
     <tbody>
     {% for p in page %}

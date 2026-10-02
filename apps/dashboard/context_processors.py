@@ -19,8 +19,8 @@ NAV = [
     ("People", [
         ("overview", "dashboard:overview", "", "Overview", "grid", "overview", None),
         ("users", "dashboard:customers", "", "Users", "people", "users.view", None),
-        ("riders", "dashboard:providers", "kind=bike", "Riders · bikes", "bike", "providers.view", None),
-        ("drivers", "dashboard:providers", "kind=car", "Drivers · cars", "car", "providers.view", None),
+        ("riders", "dashboard:providers", "service=bike", "Riders · bikes", "bike", "providers.view", None),
+        ("drivers", "dashboard:providers", "service=car", "Drivers · cars", "car", "providers.view", None),
         ("fleet", "dashboard:driver_dashboard", "", "Fleet", "wrench", "providers.view", None),
         ("documents", "dashboard:documents", "", "Documents", "doc", "providers.approve", "documents"),
     ]),
@@ -111,12 +111,12 @@ def dashboard(request):
     url_name = match.url_name if match else ""
     active = ACTIVE_FOR.get(url_name, "")
     if url_name in ("providers", "provider_detail", "provider_status", "provider_approve"):
-        kind = request.GET.get("kind")
-        if not kind and url_name != "providers":
+        kind = request.session.get(SESSION_SERVICE_KEY) if url_name == "providers" else None
+        if url_name != "providers":
             from apps.providers.models import ProviderProfile
             pk = match.kwargs.get("pk") if match else None
             kind = ProviderProfile.objects.filter(pk=pk).values_list("service", flat=True).first() if pk else None
-        active = "riders" if kind == "bike" else "drivers"
+        active = {"bike": "riders", "car": "drivers"}.get(kind, "")
 
     counts = _counts(user)
     groups, page_label = [], "Dashboard"

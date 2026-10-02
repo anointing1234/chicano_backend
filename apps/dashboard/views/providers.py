@@ -23,7 +23,7 @@ from apps.providers.services import onboarding_checklist
 from apps.staff import services
 
 from .. import metrics
-from ..access import apply_sort, back, current_service, paginate, run_action, staff_area
+from ..access import SESSION_SERVICE_KEY, apply_sort, back, current_service, paginate, run_action, staff_area
 from ..forms import ReasonForm, VehicleApproveForm
 
 SORTS = {"name": "user__first_name", "rating": "rating_avg", "trips": "total_trips", "joined": "created_at", "status": "status"}
@@ -31,8 +31,10 @@ SORTS = {"name": "user__first_name", "rating": "rating_avg", "trips": "total_tri
 
 @staff_area("providers.view")
 def provider_list(request):
-    service = current_service(request)
     g = request.GET
+    if g.get("kind") in ("car", "bike"):       # old sidebar links (?kind=) now switch the top-bar service
+        request.session[SESSION_SERVICE_KEY] = g["kind"]
+    service = current_service(request)
     soon = timezone.localdate() + timedelta(days=30)
     qs = (ProviderProfile.objects.select_related("user")
           .prefetch_related("vehicles")

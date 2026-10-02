@@ -107,7 +107,7 @@
         <div>
           <div class="cell-main">{{ v.color }} {{ v.make }} {{ v.model }} ({{ v.year }})</div>
           <div class="cell-sub mono">{{ v.plate_number }}</div>
-          <div class="cell-sub">{{ v.seats }} seat{{ v.seats|pluralize }}{% if v.kind == "bike" %} · rider helmet {{ v.has_rider_helmet|yesno:"✓,✗" }} · passenger helmet {{ v.has_passenger_helmet|yesno:"✓,✗" }}{% endif %}</div>
+          <div class="cell-sub">{% if v.kind == "bike" %}Rider helmet {{ v.has_rider_helmet|yesno:"✓,✗" }} · delivery box {{ v.has_delivery_box|yesno:"✓,✗" }}{% else %}{{ v.seats }} seat{{ v.seats|pluralize }}{% endif %}</div>
           <div class="chips" style="margin-top:6px">{% badge v.status %}{% if v.is_active %}<span class="chip">In use</span>{% endif %}{% for t in v.ride_types.all %}<span class="chip">{{ t.name }}</span>{% endfor %}</div>
         </div>
         {% if can.providers_approve and v.status != "approved" %}
