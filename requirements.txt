@@ -34,7 +34,6 @@ django-debug-toolbar==4.4.6
 django-environ==0.12.0
 django-extensions==3.2.3
 django-filter==26.1
-django-heroku==0.3.1
 django-import-export==4.3.5
 django-localflavor==4.0
 django-multiselectfield==0.1.13
@@ -78,7 +77,6 @@ platformdirs==4.2.2
 progressbar2==4.5.0
 psycopg==3.2.3
 psycopg-binary==3.2.3
-psycopg2==2.9.10
 psycopg2-binary==2.9.10
 py-ubjson==0.16.1
 pyasn1==0.6.1
