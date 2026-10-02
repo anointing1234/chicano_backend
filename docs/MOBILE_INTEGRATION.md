@@ -118,7 +118,7 @@ Re-run it whenever the backend changes; TypeScript then shows you exactly which 
 | 402 | `insufficient_wallet`, `payment_failed` | Show "Change payment method" |
 | 403 | `permission_denied`, `account_suspended`, `provider_not_approved` | `account_suspended` → "Account on hold" screen; `provider_not_approved` → onboarding screen |
 | 404 | `not_found`, `no_active_ride` | Record doesn't exist or isn't yours |
-| 409 | `invalid_state`, `quote_expired`, `quote_used`, `active_ride_exists`, `offer_expired`, `helmet_check_required`, `already_rated`, … | Refresh the screen's data; the record moved on |
+| 409 | `invalid_state`, `quote_expired`, `quote_used`, `active_ride_exists`, `offer_expired`, `package_not_collected`, `already_rated`, … | Refresh the screen's data; the record moved on |
 | 429 | `throttled` (`details.retry_after_seconds`) | Wait, then retry |
 
 ---
@@ -283,7 +283,7 @@ const ride = useQuery({
 | `cancelled` | "Trip cancelled" (`cancelled_by`, `cancel_reason`, `cancellation_fee_amount`) |
 | `no_provider` | "No drivers nearby, try again" |
 
-Bike rides have `requires_helmet: true` — show the helmet reminder.
+Bike rides are package deliveries (`is_delivery: true`). Book them with `package: {kind, size, contents?, fragile?, recipient_name, recipient_phone}` (400 `package_required` without it); every ride, offer and trip then returns the same `package` object (null for cars).
 
 ---
 
@@ -353,7 +353,7 @@ Same endpoints for both; `service` on the profile is `car` (driver) or `bike` (r
 |---|---|
 | Register as driver/rider | `POST /provider/apply/ {service, city, first_name?, last_name?}` |
 | Checklist screen | `GET /provider/onboarding/` → `steps[]` with `state` = `done` / `in_review` / `action_needed` / `todo` |
-| Vehicle | `GET/POST /provider/vehicles/ {make, model, year, color, plate_number, seats, has_rider_helmet, has_passenger_helmet, ...}` |
+| Vehicle | `GET/POST /provider/vehicles/ {make, model, year, color, plate_number, seats, has_rider_helmet, has_delivery_box, has_reflective_vest, ...}` |
 | Documents | `POST /provider/documents/` **multipart**: `doc_type`, `file`, `back_file?`, `number?`, `expires_at?`; `GET /provider/documents/` shows `status` + `rejection_reason` |
 | Bank + profile | `GET/PATCH /provider/me/` (bank_name, bank_account_number, bank_account_name) |
 
@@ -372,16 +372,15 @@ await api.post("/provider/documents/", form, { headers: { "Content-Type": "multi
 
 | Step | Call |
 |---|---|
-| Online / offline toggle | `POST /provider/status/ {is_online: true}` — 403 `provider_not_approved`, or 409 explaining why not: `no_approved_vehicle`, `helmet_required` (bikes), `document_expired` (`details.doc_types`), `active_ride` (going offline mid-trip) |
+| Online / offline toggle | `POST /provider/status/ {is_online: true}` — 403 `provider_not_approved`, or 409 explaining why not: `no_approved_vehicle`, `helmet_required` (bike without the rider's helmet), `document_expired` (`details.doc_types`), `active_ride` (going offline mid-trip) |
 | Send GPS | `POST /provider/location/ {lat, lng, heading}` every 4–5 s while online |
 | Incoming request | `GET /provider/offers/current/` (poll 3 s) → full-screen card, countdown from `seconds_left` (15 s) |
 | Accept / decline | `POST /provider/offers/{id}/accept/` (→ trip) · `POST /provider/offers/{id}/decline/` (204). 409 `offer_expired` if too late |
 | Arrived at pickup | `POST /provider/trips/{id}/arrive/` |
-| **Bikes only:** helmet handed over | `POST /provider/trips/{id}/helmet-check/` — **required before start** (409 `helmet_check_required`) |
+| **Bikes only:** package collected | `POST /provider/trips/{id}/package-collected/` — **required before start** (409 `package_not_collected`). `helmet-check/` is the old name and still works |
 | Start | `POST /provider/trips/{id}/start/` |
 | Complete | `POST /provider/trips/{id}/complete/` |
 | Cash trip: collect | show "Collect ₦X" from `cash_due_amount`, then `POST /provider/trips/{id}/collect-cash/` |
-| **Bikes only:** helmet back | `POST /provider/trips/{id}/helmet-returned/` |
 | Cancel before pickup | `POST /provider/trips/{id}/cancel/ {reason}` (ride goes to someone else) |
 | Customer didn't show | `POST /provider/trips/{id}/no-show/` (after the free waiting time; customer pays the fee, credited to you) |
 | Rate customer | `POST /provider/trips/{id}/rate/ {stars, tags, comment}` |

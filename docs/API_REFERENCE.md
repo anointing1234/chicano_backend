@@ -82,11 +82,11 @@ Every endpoint below is documented there with the same URL, method, auth, reques
 | GET | `/provider/trips/current/` | Approved | — | 200 ProviderTrip · 204 none (poll 5 s) | 401, 403 |
 | GET | `/provider/trips/?page=` | Approved | — | 200 paginated ProviderTrip | 401, 403 |
 | POST | `/provider/trips/{id}/arrive/` | Approved | — | 200 ProviderTrip | 401, 403, 404, 409 `invalid_state` |
-| POST | `/provider/trips/{id}/helmet-check/` | Approved (bikes) | — | 200 ProviderTrip | 401, 403, 404, 409 `not_bike_ride` / `invalid_state` |
-| POST | `/provider/trips/{id}/start/` | Approved | — | 200 ProviderTrip | 401, 403, 404, 409 `helmet_check_required` / `invalid_state` |
+| POST | `/provider/trips/{id}/package-collected/` | Approved (bikes) | — | 200 ProviderTrip | 401, 403, 404, 409 `not_delivery` / `invalid_state` |
+| POST | `/provider/trips/{id}/helmet-check/` | Approved (bikes) | — | 200 ProviderTrip | Old name of `package-collected`, kept for older Rider app builds |
+| POST | `/provider/trips/{id}/start/` | Approved | — | 200 ProviderTrip | 401, 403, 404, 409 `package_not_collected` (bikes) / `invalid_state` |
 | POST | `/provider/trips/{id}/complete/` | Approved | — | 200 ProviderTrip (`cash_due_amount`) | 401, 403, 404, 409 |
 | POST | `/provider/trips/{id}/collect-cash/` | Approved | — | 200 ProviderTrip | 401, 403, 404, 409 `not_cash_ride` / `invalid_state` |
-| POST | `/provider/trips/{id}/helmet-returned/` | Approved (bikes) | — | 200 ProviderTrip | 401, 403, 404, 409 `not_bike_ride` |
 | POST | `/provider/trips/{id}/cancel/` | Approved | Cancel `{reason?}` | 200 ProviderTrip | 400, 401, 403, 404, 409 |
 | POST | `/provider/trips/{id}/no-show/` | Approved | — | 200 ProviderTrip | 401, 403, 404, 409 `no_show_too_early` |
 | POST | `/provider/trips/{id}/rate/` | Approved | Rate `{stars, tags?, comment?}` | 201 Rating | 400, 401, 403, 404, 409 `already_rated` |
@@ -136,7 +136,7 @@ All need a staff token from `POST /staff/auth/login/ {email, password}` (→ 200
 | POST | `/staff/providers/{id}/reject/` | compliance | `{reason}` | StaffProviderDetail |
 | POST | `/staff/providers/{id}/suspend/` | operations, compliance | `{reason}` | StaffProviderDetail (409 `active_ride_exists`) |
 | POST | `/staff/providers/{id}/reinstate/` | operations, compliance | — | StaffProviderDetail |
-| POST | `/staff/vehicles/{id}/approve/` | compliance | `{ride_types: ["car_standard", ...]}` | Vehicle (400 if year too old / helmets missing) |
+| POST | `/staff/vehicles/{id}/approve/` | compliance | `{ride_types: ["car_standard", ...]}` | Vehicle (400 if year too old / bike has no rider helmet) |
 | POST | `/staff/vehicles/{id}/reject/` | compliance | `{reason}` | Vehicle |
 | GET | `/staff/documents/?status=pending&service=&doc_type=&provider=` | compliance | — | StaffDocument (paginated) |
 | POST | `/staff/documents/{id}/approve/` | compliance | — | StaffDocument (409 `document_expired`) |
@@ -190,8 +190,9 @@ All need a staff token from `POST /staff/auth/login/ {email, password}` (→ 200
 | `invalid_state` | 409 | Action not allowed in the current status (`details.status`) |
 | `offer_expired` | 409 | The 15 s window passed or the ride was taken/cancelled |
 | `already_on_trip` | 409 | Provider must finish the current trip first |
-| `helmet_check_required` | 409 | Bike trip started before the helmet hand-over |
-| `helmet_required` | 409 | Bike has no passenger helmet recorded (going online) |
+| `package_required` | 400 | Bike delivery booked without the package and recipient (`details.package` lists the missing fields) |
+| `package_not_collected` | 409 | Bike delivery started before `package-collected` |
+| `helmet_required` | 409 | Rider's own helmet not recorded on the bike (going online) |
 | `no_approved_vehicle` | 409 | Going online without an approved active vehicle |
 | `document_expired` | 409 | A licence/insurance expired (`details.doc_types`) |
 | `active_ride` | 409 | Going offline / deleting account mid-trip |
@@ -620,7 +621,8 @@ One priced option in the 'Choose a ride' sheet.
 | `seats` | integer |  |
 | `ride_types` | list of list of codes | read-only |
 | `has_rider_helmet` | boolean |  |
-| `has_passenger_helmet` | boolean |  |
+| `has_delivery_box` | boolean | Top box or delivery bag |
+| `has_passenger_helmet` | boolean | No longer used (bikes carry packages) |
 | `has_reflective_vest` | boolean |  |
 | `status` | string |  |
 | `is_active` | boolean |  |
@@ -829,7 +831,9 @@ Customer view of a ride. Poll GET /rides/{id}/ every 3-5 s while `is_active` is 
 | `vehicle` | VehiclePublic | read-only |
 | `provider_location` | computed | Live position while accepted/arrived/in_progress. |
 | `eta_to_pickup_seconds` | computed |  |
-| `requires_helmet` | computed | True for bike rides: show the helmet reminder. |
+| `requires_helmet` | computed | Deprecated, always false |
+| `is_delivery` | computed | True for bike rides (package delivery) |
+| `package` | object, nullable | Bikes: `{kind, size, contents, fragile, recipient_name, recipient_phone, collected_at}`; null for cars |
 | `cancellation_fee_if_cancelled_now` | computed |  |
 | `share_url` | computed |  |
 | `my_rating` | computed |  |
@@ -968,7 +972,10 @@ Driver/rider view of their current or past trip.
 | `cash_due_amount` | integer | read-only; Cash to collect (0 for card/wallet). Includes tip. |
 | `cash_collected_at` | datetime | nullable |
 | `customer` | computed |  |
-| `helmet_required` | computed |  |
+| `is_delivery` | computed | True for bike rides |
+| `package` | object, nullable | What to collect and who receives it (bikes) |
+| `package_collected_at` | datetime | nullable |
+| `helmet_required` | computed | Deprecated, always false |
 | `helmet_handed_over_at` | datetime | nullable |
 | `helmet_returned_at` | datetime | nullable |
 | `accepted_at` | datetime | nullable |
