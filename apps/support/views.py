@@ -125,7 +125,8 @@ class LostItemView(APIView):
             TicketMessage.objects.create(ticket=ticket, sender=request.user, body=data.validated_data["description"])
             report = data.save(customer=request.user, ticket=ticket)
         if ride.provider:
-            services.notify(ride.provider.user, "Lost item reported", f"A customer left: {report.description}",
+            title, lead = ("Package issue reported", "The sender reports") if ride.service == "bike" else ("Lost item reported", "A customer left")
+            services.notify(ride.provider.user, title, f"{lead}: {report.description}",
                             data={"type": "lost_item", "ride_id": str(ride.id)})
         return Response(LostItemSerializer(report).data, status=status.HTTP_201_CREATED)
 

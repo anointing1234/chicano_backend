@@ -4,7 +4,7 @@ exactly as the Expo apps and the admin web app call them.
 
     test_car_cash_trip_end_to_end   OTP login -> estimate -> book -> offer -> accept -> arrive
                                     -> start -> complete -> collect cash -> ledger maths
-    test_bike_needs_helmet_check    bike trips can't start before the helmet hand-over
+    test_bike_delivery_needs_package_collected   bike deliveries can't start before the package is collected
     test_error_envelope             401 / 400 / 403 all use {"error": {code, message, details}}
     test_staff_approves_driver      compliance reviews documents + vehicle, then approves
 """
@@ -33,12 +33,16 @@ def _otp_login(phone: str, app: str) -> APIClient:
     return c
 
 
-def _book(customer: APIClient, service: str, pickup: dict, dropoff: dict, ride_type: str, payment: str = "cash") -> dict:
+PACKAGE = {"kind": "Documents", "size": "Small", "contents": "Signed contract", "fragile": False,
+           "recipient_name": "Ngozi Okafor", "recipient_phone": "0803 412 5567"}
+
+
+def _book(customer: APIClient, service: str, pickup: dict, dropoff: dict, ride_type: str, payment: str = "cash", **extra) -> dict:
     r = customer.post("/api/v1/rides/estimate/", {"service": service, "pickup": pickup, "dropoff": dropoff}, format="json")
     assert r.status_code == 200, r.content
     quote = next(q for q in r.json() if q["ride_type"]["code"] == ride_type)
     r = customer.post("/api/v1/rides/", {"quote_id": quote["quote_id"], "payment_method": payment,
-                                         "pickup_address": "Pickup", "dropoff_address": "Dropoff"}, format="json")
+                                         "pickup_address": "Pickup", "dropoff_address": "Dropoff", **extra}, format="json")
     assert r.status_code == 201, r.content
     return r.json()
 
@@ -87,21 +91,22 @@ def test_car_cash_trip_end_to_end(demo, client_for, user_by_phone):
     assert r.status_code == 201, r.content
 
 
-def test_bike_needs_helmet_check(demo, client_for, user_by_phone):
+def test_bike_delivery_needs_package_collected(demo, client_for, user_by_phone):
     customer = _otp_login("+2348030000002", "user_bikes")
-    ride = _book(customer, "bike", YABA, SURULERE, "bike")
+    ride = _book(customer, "bike", YABA, SURULERE, "bike", package=PACKAGE)
     rider = client_for(user_by_phone("+2348070000001"))
     offer = rider.get("/api/v1/provider/offers/current/").json()
     rider.post(f"/api/v1/provider/offers/{offer['id']}/accept/")
     rid = ride["id"]
     assert rider.post(f"/api/v1/provider/trips/{rid}/arrive/").status_code == 200
 
-    # Starting without the helmet hand-over is refused with a specific code.
+    # Starting before the package is collected is refused with a specific code.
     r = rider.post(f"/api/v1/provider/trips/{rid}/start/")
     assert r.status_code == 409
-    assert r.json()["error"]["code"] == "helmet_check_required"
+    assert r.json()["error"]["code"] == "package_not_collected"
 
-    assert rider.post(f"/api/v1/provider/trips/{rid}/helmet-check/").status_code == 200
+    r = rider.post(f"/api/v1/provider/trips/{rid}/package-collected/")
+    assert r.status_code == 200 and r.json()["package"]["collected_at"]
     r = rider.post(f"/api/v1/provider/trips/{rid}/start/")
     assert r.status_code == 200 and r.json()["status"] == "in_progress"
 

@@ -1,52 +1,74 @@
 {% extends "dashboard/base.html" %}
-{# Drivers & Fleet dashboard (gold panel): supply side — drivers (cars), riders (bikes), documents, payouts. #}
-{% load dashboard_tags %}
-{% block title %}Driver dashboard{% endblock %}
-{% block panel %}driver{% endblock %}
+{# A05 Fleet · Drivers & riders: supply KPIs, live map of cars and bikes, onboarding pipeline, expiring documents (Remind). #}
+{% load static dashboard_tags %}
+{% block title %}Drivers &amp; riders{% endblock %}
+{% block head %}<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">{% endblock %}
 {% block content %}
 <div class="page-header">
-  <div><h1>Drivers &amp; fleet</h1><p>Drivers (Driver app · Cars) and riders (Rider app · Bikes). {{ period.label }}.</p></div>
-  {% include "dashboard/dashboards/_toolbar.html" %}
+  <div><h1>Drivers &amp; riders</h1><p><span class="live-dot" aria-hidden="true"></span><span data-updated>Live · updated just now</span></p></div>
+  <div class="page-actions">
+    {% include "dashboard/partials/range_filter.html" %}
+    <a class="btn btn-secondary export" href="{% query export='csv' %}">{% icon "download" 17 %}Export</a>
+  </div>
 </div>
-{% url 'dashboard:providers' as pu %}{% url 'dashboard:documents' as du %}{% url 'dashboard:payouts' as payu %}{% url 'dashboard:dispatch' as disu %}
+
+{% url 'dashboard:providers' as pu %}{% url 'dashboard:documents' as du %}{% url 'dashboard:payouts' as payu %}
 <div class="stats">
-  {% include "dashboard/partials/stat.html" with title="Registered drivers & riders" value=m.providers_total|num icon="wheel" desc="All applications, any status" href=pu link="Manage drivers & riders" %}
-  {% include "dashboard/partials/stat.html" with title="Approved" value=m.approved|num icon="check" desc="Allowed to go online" href=pu|add:"?status=approved" %}
-  {% include "dashboard/partials/stat.html" with title="Online now" value=m.online|num icon="radar" desc="Available or on a trip right now" href=pu|add:"?online=yes" %}
-  {% include "dashboard/partials/stat.html" with title="Awaiting approval" value=m.awaiting_approval|num icon="clock" desc="Applications under review" href=pu|add:"?status=under_review" link="Review applications" alert=m.awaiting_approval %}
+  {% include "dashboard/partials/stat.html" with title="Online drivers · cars" icon="car" value=f.on_car|num desc=f.on_car_desc href=pu|add:"?kind=car&online=yes" %}
+  {% include "dashboard/partials/stat.html" with title="Online riders · bikes" icon="bike" value=f.on_bike|num desc=f.on_bike_desc href=pu|add:"?kind=bike&online=yes" %}
+  {% include "dashboard/partials/stat.html" with title="Pending approvals" icon="hourglass" value=f.pending|num d=f.pending_delta desc=f.pending_desc alert=f.pending href=pu|add:"?status=under_review" %}
+  {% include "dashboard/partials/stat.html" with title="Document / vehicle issues" icon="alert" value=f.issues|num d=f.issues_delta desc=f.issues_desc alert=f.issues href=pu|add:"?docs=expiring" %}
+  {% include "dashboard/partials/stat.html" with title=f.earn_title icon="wallet" value=f.earned d=f.earned_delta desc=f.earned_desc %}
+  {% include "dashboard/partials/stat.html" with title="Acceptance · drivers" icon="check" value=f.acc_car d=f.acc_car_d desc=f.target_desc %}
+  {% include "dashboard/partials/stat.html" with title="Acceptance · riders" icon="check" value=f.acc_bike d=f.acc_bike_d desc=f.target_desc %}
+  {% include "dashboard/partials/stat.html" with title="Pending payouts" icon="bank" value=f.payouts desc=f.payouts_desc href=payu %}
 </div>
-<div class="stats">
-  {% include "dashboard/partials/stat.html" with title="Documents to review" value=m.documents_pending|num icon="doc" desc="Uploads waiting for compliance" href=du link="Open review queue" %}
-  {% include "dashboard/partials/stat.html" with title="Expiring in 30 days" value=m.documents_expiring|num icon="clock" desc="Approved licences/insurance about to expire" href=pu|add:"?docs=expiring" %}
-  {% include "dashboard/partials/stat.html" with title="Active trips" value=m.active_rides|num icon="route" desc="Accepted, at pickup or in progress" href=disu %}
-  {% include "dashboard/partials/stat.html" with title="Pending payouts" value=m.payouts_pending_amount|naira icon="bank" desc=m.payouts_desc href=payu %}
-</div>
-<div class="stats">
-  {% include "dashboard/partials/stat.html" with title="Trips completed" value=m.trips|num icon="check" desc="In the period" delta=m.trips_delta %}
-  {% include "dashboard/partials/stat.html" with title="Active drivers & riders" value=m.active_providers|num icon="people" desc="Completed at least one trip in the period" %}
-  {% include "dashboard/partials/stat.html" with title="Average rating" value=m.avg_rating_display icon="trophy" desc="Across approved drivers and riders" %}
-  {% if m.acceptance is not None %}{% include "dashboard/partials/stat.html" with title="Acceptance rate" value=m.acceptance|pct icon="gauge" desc="Offers accepted, all time, approved only" %}
-  {% else %}{% include "dashboard/partials/stat.html" with title="Acceptance rate" value="—" icon="gauge" desc="No offers sent yet" %}{% endif %}
-</div>
+
 <div class="grid grid-2">
-  <section class="card"><div class="card-head"><div><h2>Trips completed per day</h2><p>{{ period.label }}</p></div></div>
-    {% include "dashboard/partials/bar_chart.html" with series=m.chart_trips aria="Trips completed per day" %}</section>
-  <section class="card"><div class="card-head"><div><h2>New applications per day</h2><p>{{ period.label }}</p></div></div>
-    {% include "dashboard/partials/bar_chart.html" with series=m.chart_applications aria="New driver and rider applications per day" %}</section>
-</div>
-<div class="grid grid-main">
-  <section class="card">
-    <div class="card-head"><div><h2>Top performers</h2><p>Most trips completed in the period</p></div></div>
-    {% if m.top %}
-    <div class="table-wrap"><table class="table responsive">
-      <thead><tr><th>Name</th><th>Type</th><th class="right">Trips</th><th class="right">Fares</th></tr></thead>
-      <tbody>{% for t in m.top %}
-        <tr class="clickable" data-href="{% url 'dashboard:provider_detail' t.id %}">
-          <td class="primary"><a href="{% url 'dashboard:provider_detail' t.id %}">{{ t.name }}</a></td>
-          <td>{% service_tag t.service %}</td><td class="right">{{ t.trips|num }}</td><td class="right">{{ t.gross|naira }}</td></tr>
-      {% endfor %}</tbody></table></div>
-    {% else %}{% include "dashboard/partials/empty.html" with title="No completed trips in this period" icon="trophy" %}{% endif %}
+  <section class="card" aria-labelledby="map-h">
+    <div class="card-head"><div><h2 id="map-h">Cars and bikes on the map</h2></div>
+      {% if can.dispatch %}<a class="btn btn-secondary" href="{% url 'dashboard:dispatch' %}">{% icon "radar" 17 %}Open dispatch</a>{% endif %}</div>
+    <div class="map-shell"><div class="map skeleton" data-live-map="{% url 'dashboard:live_data' %}" data-every="15000" data-no-zoom aria-label="Live positions of drivers and riders"></div>
+      <div class="map-panel" data-map-panel hidden></div></div>
+    <div class="map-legend"><span><i class="avail"></i>Available</span><span><i class="pickup"></i>To pickup</span><span><i class="trip"></i>On trip</span><span><i class="off"></i>Offline</span><span><i class="car-o"></i>Car</span><span><i class="bike-o"></i>Bike</span></div>
   </section>
-  <section class="card"><div class="card-head"><h2>Applications by status</h2></div>{% include "dashboard/partials/hbars.html" with rows=m.by_status %}</section>
+
+  <section class="card" aria-labelledby="pipe-h">
+    <div class="card-head"><div><h2 id="pipe-h">Onboarding pipeline</h2><p>Applications in progress, last 30 days</p></div>
+      <div class="segmented" role="group" aria-label="Service">
+        <a class="seg{% if pipe == 'all' %} active{% endif %}" href="{% query pipe='' %}">All</a>
+        <a class="seg{% if pipe == 'car' %} active{% endif %}" href="{% query pipe='car' %}">{% icon "car" 15 %}Cars</a>
+        <a class="seg{% if pipe == 'bike' %} active{% endif %}" href="{% query pipe='bike' %}">{% icon "bike" 15 %}Bikes</a>
+      </div></div>
+    {% if f.pipeline_applied %}
+      <div class="hbars">
+        {% for s in f.pipeline %}<div class="hbar"><span>{{ s.label }}</span><div class="hbar-track"><div class="hbar-fill{% if pipe == 'bike' %} bike{% endif %}" style="width:{{ s.pct }}%"></div></div><strong>{{ s.n|num }}</strong></div>{% endfor %}
+      </div>
+    {% else %}{% include "dashboard/partials/empty.html" with title="No applications in the last 30 days" text="New sign-ups from the Driver and Rider apps show here." icon="people" %}{% endif %}
+  </section>
 </div>
+
+<section class="card" aria-labelledby="exp-h">
+  <div class="card-head"><div><h2 id="exp-h">Expiring documents</h2></div>
+    {% if f.expiring_total %}<a class="btn btn-ghost" href="{{ pu }}?docs=expiring">View all {{ f.expiring_total }}</a>{% endif %}</div>
+  {% if f.expiring %}
+  <div class="table-wrap">
+    <table class="table responsive">
+      <thead><tr><th>Driver / rider</th><th>Document</th><th>Expires in</th><th><span class="sr-only">Action</span></th></tr></thead>
+      <tbody>{% for r in f.expiring %}{% with p=r.doc.provider %}
+        <tr>
+          <td class="primary"><div class="person"><span class="avatar">{{ p.user.full_name|initials }}</span><div><a class="cell-main" href="{% url 'dashboard:provider_detail' p.pk %}">{{ p.user.full_name }}</a>
+            <div class="cell-sub">{% if p.service == "bike" %}Rider · bike{% else %}Driver · car{% endif %}{% if r.vehicle %} {{ r.vehicle.plate_number }}{% endif %}</div></div></div></td>
+          <td>{{ r.doc.get_doc_type_display|cut:" (cars)"|cut:" (bikes)"|cut:", class A" }}</td>
+          <td><span class="badge {% if r.days <= 3 %}badge-bad{% else %}badge-amber{% endif %} nodot">{% if r.days == 0 %}today{% else %}{{ r.days }} day{{ r.days|pluralize }}{% endif %}</span></td>
+          <td class="actions right">{% if can.providers_approve %}<form method="post" action="{% url 'dashboard:document_remind' r.doc.pk %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="btn btn-secondary" type="submit">Remind</button></form>{% endif %}</td>
+        </tr>{% endwith %}{% endfor %}</tbody>
+    </table>
+  </div>
+  {% else %}{% include "dashboard/partials/empty.html" with title="Nothing expiring in the next 30 days" icon="check-circle" tone="good" %}{% endif %}
+</section>
+{% endblock %}
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" defer></script>
+<script src="{% static 'dashboard/livemap.js' %}?v=4" defer></script>
 {% endblock %}

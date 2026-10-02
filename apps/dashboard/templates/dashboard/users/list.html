@@ -1,56 +1,186 @@
 {% extends "dashboard/base.html" %}
-{# Manage customers (Customers & Rides) / All accounts (Administration): one combined users table. #}
+{# A02 Users: filter chips, bulk bar (message · export · suspend), table, pager, and the user detail drawer (?user=<id>). #}
+{# Also serves "All accounts" (customers, drivers, riders, staff) with a role filter. #}
 {% load dashboard_tags %}
-{% block title %}{% if customers_only %}Manage customers{% else %}All accounts{% endif %}{% endblock %}
-{% block panel %}{% if customers_only %}customer{% else %}admin{% endif %}{% endblock %}
+{% block title %}{% if customers_only %}Users{% else %}All accounts{% endif %}{% endblock %}
+{% block body_class %}{% if drawer %}has-drawer{% endif %}{% endblock %}
 {% block content %}
 <div class="page-header">
-  <div><h1>{% if customers_only %}Manage customers{% else %}All accounts{% endif %}</h1>
-    <p>{% if customers_only %}Everyone who books rides in the User app · Cars or User app · Bikes.{% else %}The combined users table: customers, drivers, riders and staff. One account per phone number.{% endif %}</p></div>
+  <div><h1>{% if customers_only %}Users{% else %}All accounts{% endif %}</h1>
+    <p>{% if customers_only %}{{ page.paginator.count|num }} user{{ page.paginator.count|pluralize }} · booking cars and bikes · {{ cities.0 }}{% else %}{{ page.paginator.count|num }} accounts · customers, drivers, riders and staff{% endif %}</p></div>
+  <div class="page-actions"><a class="btn btn-secondary export" href="{% query export='csv' page='' %}">{% icon "download" 17 %}Export</a></div>
 </div>
-<section class="card">
-  <form class="filters" method="get" data-autosubmit role="search">
-    <div class="f grow"><label for="q">Search</label><div class="search-field">{% icon "search" 16 %}<input id="q" type="search" name="q" value="{{ q }}" placeholder="Name, phone (0803…) or email"></div></div>
-    {% if not customers_only %}
-    <div class="f"><label for="role">Role</label><select id="role" name="role">
-      <option value="">All roles</option>
-      <option value="customer"{% if role == "customer" %} selected{% endif %}>Customers</option>
-      <option value="driver"{% if role == "driver" %} selected{% endif %}>Drivers (cars)</option>
-      <option value="rider"{% if role == "rider" %} selected{% endif %}>Riders (bikes)</option>
-      <option value="staff"{% if role == "staff" %} selected{% endif %}>Staff</option></select></div>
-    {% endif %}
-    <div class="f"><label for="status">Account status</label><select id="status" name="status"><option value="">Any status</option>
-      {% for v, l in statuses %}<option value="{{ v }}"{% if status == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
-    <div class="f"><label for="verified">Phone verification</label><select id="verified" name="verified"><option value="">Any</option>
-      <option value="yes"{% if verified == "yes" %} selected{% endif %}>Verified</option><option value="no"{% if verified == "no" %} selected{% endif %}>Not verified</option></select></div>
-    {% if sort %}<input type="hidden" name="sort" value="{{ sort }}">{% endif %}
-    <div class="filters-actions"><button class="btn btn-secondary" type="submit">{% icon "search" 16 %} Search</button>
-      {% filters_active "q" "role" "status" "verified" as filtered %}{% if filtered %}<a class="btn btn-ghost" href="?">Clear</a>{% endif %}</div>
-  </form>
 
-  {% if page.object_list %}
-  <div class="table-wrap"><table class="table responsive">
-    <thead><tr>{% sort_th "name" "Name" %}<th>Phone</th><th>Roles</th>{% if customers_only %}{% sort_th "trips" "Trips" "right" %}<th class="right">Wallet</th>{% endif %}{% sort_th "status" "Status" %}{% sort_th "joined" "Joined" %}<th><span class="sr-only">Actions</span></th></tr></thead>
+<form class="filters" method="get" data-autosubmit role="search" aria-label="Filter users">
+  {% if q %}<input type="hidden" name="q" value="{{ q }}">{% endif %}
+  {% if sort %}<input type="hidden" name="sort" value="{{ sort }}">{% endif %}
+  <div class="f"><label for="status">Status</label><select id="status" name="status"><option value="">All</option>
+    {% for v, l in statuses %}<option value="{{ v }}"{% if status == v %} selected{% endif %}>{{ l }}</option>{% endfor %}</select></div>
+  {% if customers_only %}
+  <div class="f"><label for="uses">Uses</label><select id="uses" name="uses"><option value="">All</option>
+    <option value="both"{% if uses == "both" %} selected{% endif %}>Cars + bikes</option>
+    <option value="car"{% if uses == "car" %} selected{% endif %}>Cars only</option>
+    <option value="bike"{% if uses == "bike" %} selected{% endif %}>Bikes only</option></select></div>
+  {% else %}
+  <div class="f"><label for="role">Role</label><select id="role" name="role"><option value="">All</option>
+    <option value="customer"{% if role == "customer" %} selected{% endif %}>Customers</option>
+    <option value="driver"{% if role == "driver" %} selected{% endif %}>Drivers (cars)</option>
+    <option value="rider"{% if role == "rider" %} selected{% endif %}>Riders (bikes)</option>
+    <option value="staff"{% if role == "staff" %} selected{% endif %}>Staff</option></select></div>
+  {% endif %}
+  <div class="f"><label for="joined">Joined</label><select id="joined" name="joined"><option value="">Any time</option>
+    {% for k, t in joined_choices %}<option value="{{ k }}"{% if joined == k %} selected{% endif %}>{{ t }}</option>{% endfor %}</select></div>
+  <div class="f add"><label for="verified">Verification</label><select id="verified" name="verified"><option value="">Any</option>
+    <option value="yes"{% if verified == "yes" %} selected{% endif %}>Verified</option><option value="no"{% if verified == "no" %} selected{% endif %}>Unverified</option></select></div>
+  {% filters_active "q" "role" "status" "verified" "uses" "joined" as filtered %}
+  {% if filtered %}<div class="filters-actions"><a class="btn btn-ghost" href="?">Clear filters</a></div>{% endif %}
+  <noscript><button class="btn btn-secondary btn-sm" type="submit">Apply</button></noscript>
+</form>
+
+<form id="bulk-form" method="post" action="{% url 'dashboard:user_bulk' %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"></form>
+<div class="bulkbar" id="bulk-form-bar" role="region" aria-label="Bulk actions">
+  <span class="count">0 selected</span>
+  {% if can.broadcasts %}<button class="btn" type="button" data-dialog="bulk-message">{% icon "megaphone" 17 %}Send message</button>{% endif %}
+  <button class="btn" type="submit" form="bulk-form" name="action" value="export">{% icon "download" 17 %}Export</button>
+  {% if can.users_change %}<button class="btn btn-danger" type="button" data-dialog="bulk-suspend">{% icon "ban" 17 %}Suspend</button>{% endif %}
+</div>
+
+{% if page.object_list %}
+<div class="table-wrap">
+  <table class="table responsive" data-bulk="bulk-form">
+    <colgroup><col style="width:46px"><col style="width:31%"><col style="width:17%"><col style="width:14%"><col style="width:16%"><col style="width:9%"><col style="width:11%"></colgroup>
+    <thead><tr><th class="check"><input type="checkbox" aria-label="Select all on this page"></th>
+      {% sort_th "name" "User" %}<th>Phone</th>{% sort_th "status" "Status" %}<th>Verification</th>
+      {% if customers_only %}{% sort_th "trips" "Trips" %}<th>Rating</th>{% else %}<th>Roles</th>{% sort_th "joined" "Joined" %}{% endif %}</tr></thead>
     <tbody>
     {% for u in page %}
-      <tr class="clickable" data-href="{% url 'dashboard:user_detail' u.pk %}">
-        <td class="primary"><div class="person"><span class="avatar" aria-hidden="true">{{ u.full_name|initials }}</span>
-          <div><a href="{% url 'dashboard:user_detail' u.pk %}">{{ u.full_name|default:"No name yet" }}</a><div class="cell-sub">{{ u.email|default:"" }}</div></div></div></td>
-        <td class="nowrap">{{ u.phone }}{% if not u.phone_verified_at %} <span class="chip warn">unverified</span>{% endif %}</td>
-        <td><div class="chips">{% for r in u.roles %}<span class="chip">{{ r|label }}</span>{% empty %}<span class="muted">—</span>{% endfor %}</div></td>
-        {% if customers_only %}<td class="right">{{ u.customer_profile.total_trips|num }}</td><td class="right">{% if u.wallet %}{{ u.wallet.balance_amount|naira }}{% else %}—{% endif %}</td>{% endif %}
+      <tr data-href="{% if customers_only %}{% query user=u.pk %}{% else %}{% url 'dashboard:user_detail' u.pk %}{% endif %}"{% if drawer and drawer.person.pk == u.pk %} class="is-selected"{% endif %}>
+        <td class="check"><input type="checkbox" name="ids" value="{{ u.pk }}" form="bulk-form" aria-label="Select {{ u.full_name|default:u.phone }}"></td>
+        <td class="primary"><div class="person"><span class="avatar" aria-hidden="true">{{ u.full_name|default:u.phone|initials }}</span>
+          <div><a class="cell-main" href="{% if customers_only %}{% query user=u.pk %}{% else %}{% url 'dashboard:user_detail' u.pk %}{% endif %}">{{ u.full_name|default:"No name yet" }}</a><div class="cell-sub">{{ u.email|default:"no email" }}</div></div></div></td>
+        <td class="mono nowrap">{{ u.phone|spaced_phone|truncatechars:15 }}</td>
         <td>{% badge u.status %}</td>
-        <td class="nowrap">{{ u.date_joined|date:"j M Y" }}</td>
-        <td class="actions"><a class="row-go" href="{% url 'dashboard:user_detail' u.pk %}" aria-label="View details" data-tip="View details">{% icon "chev-right" 18 %}</a></td>
+        <td>{% if u.phone_verified_at %}<span class="badge badge-info nodot">Verified</span>{% else %}<span class="badge badge-neutral nodot">Unverified</span>{% endif %}</td>
+        {% if customers_only %}
+          <td class="tabular">{{ u.customer_profile.total_trips|num }}</td>
+          <td class="tabular nowrap">{% if u.customer_profile.rating_count %}★ {{ u.customer_profile.rating_avg|floatformat:2 }}{% else %}—{% endif %}</td>
+        {% else %}
+          <td><div class="chips">{% for r in u.roles %}<span class="chip">{{ r|label }}</span>{% empty %}<span class="muted">—</span>{% endfor %}</div></td>
+          <td class="nowrap">{{ u.date_joined|date:"j M Y" }}</td>
+        {% endif %}
       </tr>
     {% endfor %}
     </tbody>
-  </table></div>
-  {% include "dashboard/partials/pager.html" %}
-  {% else %}
-    {% filters_active "q" "role" "status" "verified" as filtered %}
-    {% if filtered %}{% include "dashboard/partials/empty.html" with title="No accounts match these filters" text="Check the spelling or phone number, or clear the filters." clear_url="?" icon="people" %}
-    {% else %}{% include "dashboard/partials/empty.html" with title="No customers yet" text="Accounts appear here as soon as someone signs up in the app." icon="people" %}{% endif %}
-  {% endif %}
-</section>
+  </table>
+</div>
+{% include "dashboard/partials/pager.html" %}
+{% else %}
+  <div class="card">
+  {% if filtered %}{% include "dashboard/partials/empty.html" with title="No users match these filters" text="Try another status or joining date." clear_url="?" icon="search" %}
+  {% else %}{% include "dashboard/partials/empty.html" with title="No users yet" text="Accounts appear here as soon as someone signs up in the app." icon="people" %}{% endif %}
+  </div>
+{% endif %}
+
+{# ---- bulk dialogs (fields belong to #bulk-form) #}
+{% if can.broadcasts %}
+<dialog class="modal" id="bulk-message" aria-labelledby="bm-h">
+  <div class="dialog-body">
+    <div class="dialog-head"><div class="dialog-icon">{% icon "megaphone" 20 %}</div><h2 id="bm-h">Message the selected users</h2><button class="dialog-close" type="button" data-close aria-label="Close">×</button></div>
+    <div class="dialog-main">
+      <p>They get it in their app inbox and as a push notification. It's logged under your name.</p>
+      <div class="field"><label for="bm-title">Title</label><input id="bm-title" type="text" name="title" maxlength="120" form="bulk-form" placeholder="e.g. Service update"></div>
+      <div class="field"><label for="bm-body">Message</label><textarea id="bm-body" name="body" maxlength="255" form="bulk-form" rows="3"></textarea></div>
+    </div>
+    <div class="dialog-foot"><button class="btn btn-secondary" type="button" data-close>Cancel</button>
+      <button class="btn btn-primary" type="submit" form="bulk-form" name="action" value="message">{% icon "megaphone" 17 %}Send message</button></div>
+  </div>
+</dialog>
+{% endif %}
+{% if can.users_change %}
+<dialog class="modal" id="bulk-suspend" aria-labelledby="bs-h">
+  <div class="dialog-body">
+    <div class="dialog-head"><div class="dialog-icon danger">{% icon "ban" 20 %}</div><h2 id="bs-h">Suspend the selected accounts?</h2><button class="dialog-close" type="button" data-close aria-label="Close">×</button></div>
+    <div class="dialog-main">
+      <p>They can't book or sign in until someone reinstates them. Drivers and riders go offline straight away.</p>
+      <div class="field"><label for="bs-reason">Reason (shared with the user)</label><input id="bs-reason" type="text" name="reason" maxlength="255" form="bulk-form"></div>
+    </div>
+    <div class="dialog-foot"><button class="btn btn-secondary" type="button" data-close>Cancel</button>
+      <button class="btn btn-danger" type="submit" form="bulk-form" name="action" value="suspend">{% icon "ban" 17 %}Suspend</button></div>
+  </div>
+</dialog>
+{% endif %}
 {% endblock %}
+
+{% block drawer %}{% if drawer %}{% with p=drawer.person %}
+<aside class="drawer" aria-labelledby="drawer-h">
+  <div class="drawer-head">
+    <span class="avatar lg" aria-hidden="true">{{ p.full_name|default:p.phone|initials }}</span>
+    <div class="grow">
+      <h2 id="drawer-h">{{ p.full_name|default:"No name yet" }}</h2>
+      <p><span class="mono">{{ p|user_ref }}</span> · {{ p.phone|spaced_phone }}</p>
+      <p>Joined {{ p.date_joined|date:"j M Y" }}{% if drawer.last %} · last trip {{ drawer.last.requested_at|ago }}{% endif %}</p>
+    </div>
+    <a class="drawer-close" href="{% query user='' %}" aria-label="Close panel">{% icon "x" 20 %}</a>
+  </div>
+  <div class="drawer-body">
+    <div class="chips">
+      {% badge p.status %}
+      {% if p.phone_verified_at %}<span class="badge badge-info nodot">Phone verified</span>{% else %}<span class="badge badge-neutral nodot">Phone not verified</span>{% endif %}
+      {% if drawer.methods %}<span class="badge badge-neutral nodot">{% for m in drawer.methods %}{% if not forloop.first %} + {% endif %}{{ m|label|lower|capfirst }}{% endfor %}</span>{% endif %}
+      {% if drawer.uses_car %}{% service_tag "car" %}{% endif %}{% if drawer.uses_bike %}{% service_tag "bike" %}{% endif %}
+    </div>
+    <div class="ministats">
+      <div class="ministat"><div class="lbl">Car trips</div><div class="val">{{ drawer.car_trips|num }}</div></div>
+      <div class="ministat"><div class="lbl">Bike trips</div><div class="val">{{ drawer.bike_trips|num }}</div></div>
+      <div class="ministat"><div class="lbl">Lifetime spend</div><div class="val">{{ drawer.spend|short_naira }}</div></div>
+    </div>
+    <div>
+      <div class="overline" style="margin-bottom:10px">Activity</div>
+      <ol class="timeline">
+        {% for a in drawer.activity %}
+          <li class="{{ a.cls }}"><span class="rail"></span><div class="body"><div class="head"><span class="t">{{ a.title }}</span><span class="t-time">{% if a.at|date:"Ymd" == now|date:"Ymd" %}{{ a.at|time:"H:i" }}{% else %}{{ a.at|date:"j M" }}{% endif %}</span></div><div class="s">{{ a.sub }}</div></div></li>
+        {% endfor %}
+      </ol>
+    </div>
+    <div class="note-box">{% if drawer.audit %}<b>Audit:</b> Last change by {{ drawer.audit.actor.full_name|default:"System" }} on {{ drawer.audit.created_at|date:"j M H:i" }}: {{ drawer.audit.action|cut:"user."|label|lower }}{% if drawer.audit.data.reason %} ({{ drawer.audit.data.reason }}){% endif %}.
+      {% else %}<b>Audit:</b> No staff changes to this account yet.{% endif %}</div>
+    <a href="{% url 'dashboard:user_detail' p.pk %}">Open full profile</a>
+  </div>
+  <div class="drawer-foot">
+    {% if can.broadcasts %}<button class="btn btn-secondary" type="button" data-dialog="one-message">{% icon "message" 17 %}Message</button>{% endif %}
+    <a class="btn btn-secondary" href="{% url 'dashboard:trips' %}?q={{ p.phone|urlencode }}">{% icon "route" 17 %}View trips</a>
+    <span class="spacer"></span>
+    {% if can.users_change %}
+      {% if p.status == "active" %}<button class="btn btn-danger" type="button" data-dialog="one-suspend">{% icon "ban" 17 %}Suspend</button>
+      {% else %}<form method="post" action="{% url 'dashboard:user_status' p.pk 'reinstate' %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="btn btn-primary" type="submit">{% icon "check" 17 %}Reinstate</button></form>{% endif %}
+    {% endif %}
+  </div>
+</aside>
+{% if can.broadcasts %}
+<dialog class="modal" id="one-message" aria-labelledby="om-h">
+  <form method="post" action="{% url 'dashboard:user_bulk' %}">{% csrf_token %}
+    <input type="hidden" name="ids" value="{{ p.pk }}"><input type="hidden" name="next" value="{{ request.get_full_path }}">
+    <div class="dialog-head"><div class="dialog-icon">{% icon "message" 20 %}</div><h2 id="om-h">Message {{ p.first_name|default:"this user" }}</h2><button class="dialog-close" type="button" data-close aria-label="Close">×</button></div>
+    <div class="dialog-main">
+      <p>Arrives in the app inbox and as a push notification.</p>
+      <div class="field"><label for="om-title">Title</label><input id="om-title" type="text" name="title" maxlength="120" required></div>
+      <div class="field"><label for="om-body">Message</label><textarea id="om-body" name="body" maxlength="255" rows="3" required></textarea></div>
+    </div>
+    <div class="dialog-foot"><button class="btn btn-secondary" type="button" data-close>Cancel</button><button class="btn btn-primary" type="submit" name="action" value="message">Send</button></div>
+  </form>
+</dialog>
+{% endif %}
+{% if can.users_change %}
+<dialog class="modal" id="one-suspend" aria-labelledby="os-h">
+  <form method="post" action="{% url 'dashboard:user_status' p.pk 'suspend' %}">{% csrf_token %}
+    <input type="hidden" name="next" value="{{ request.get_full_path }}">
+    <div class="dialog-head"><div class="dialog-icon danger">{% icon "ban" 20 %}</div><h2 id="os-h">Suspend {{ p.first_name|default:"this account" }}?</h2><button class="dialog-close" type="button" data-close aria-label="Close">×</button></div>
+    <div class="dialog-main">
+      <p>They can't book or sign in until reinstated. This is logged under your name.</p>
+      <div class="field"><label for="os-reason">Reason (shared with the user)</label><input id="os-reason" type="text" name="reason" maxlength="255" required></div>
+    </div>
+    <div class="dialog-foot"><button class="btn btn-secondary" type="button" data-close>Cancel</button><button class="btn btn-danger" type="submit">{% icon "ban" 17 %}Suspend</button></div>
+  </form>
+</dialog>
+{% endif %}
+{% endwith %}{% endif %}{% endblock %}

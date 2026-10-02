@@ -84,12 +84,14 @@ def live_providers(service: str | None) -> list[ProviderProfile]:
     """Online drivers/riders with a GPS fix from the last 10 minutes; `.on_trip` is set on each."""
     qs = (ProviderProfile.objects.select_related("user").prefetch_related("vehicles")
           .filter(is_online=True, last_lat__isnull=False, last_location_at__gte=timezone.now() - timedelta(minutes=10))
-          .annotate(busy=Count("rides", filter=Q(rides__status__in=PROVIDER_BUSY_STATUSES))))
+          .annotate(busy=Count("rides", filter=Q(rides__status__in=PROVIDER_BUSY_STATUSES)),
+                    driving=Count("rides", filter=Q(rides__status="in_progress"))))
     if service:
         qs = qs.filter(service=service)
     pins = list(qs)
     for p in pins:
         p.on_trip = p.busy > 0
+        p.phase = "trip" if p.driving else ("pickup" if p.busy else "available")   # map colours: ink / orange / green
     return pins
 
 
@@ -166,7 +168,7 @@ def reinstate_provider(request, provider: ProviderProfile) -> ProviderProfile:
 
 
 def approve_vehicle(request, vehicle, codes: list[str]):
-    """Set which ride types the vehicle may serve. Checks service, minimum year and (bikes) helmets."""
+    """Set which ride types the vehicle may serve. Checks service, minimum year and (bikes) the rider's helmet."""
     types = list(RideType.objects.filter(code__in=codes, service=vehicle.kind, is_active=True))
     problems = {}
     if not codes:
@@ -177,8 +179,8 @@ def approve_vehicle(request, vehicle, codes: list[str]):
     too_old = [t.code for t in types if t.min_vehicle_year and vehicle.year < t.min_vehicle_year]
     if too_old:
         problems.setdefault("ride_types", []).append(f"Vehicle year {vehicle.year} is too old for: {', '.join(too_old)}")
-    if vehicle.kind == "bike" and not (vehicle.has_rider_helmet and vehicle.has_passenger_helmet):
-        problems["helmets"] = ["Bikes need a rider helmet and a passenger helmet."]
+    if vehicle.kind == "bike" and not vehicle.has_rider_helmet:
+        problems["helmets"] = ["Dispatch bikes need a rider helmet."]
     if problems:
         first = next(iter(problems.values()))[0]
         raise ApiError("validation_error", first, details=problems)

@@ -1,41 +1,150 @@
 {% extends "dashboard/base.html" %}
-{# Promo codes: search, live/scheduled/ended, sorting; click a row to edit. #}
+{# A04 Promotions: KPIs, status/type filter chips, promo code table; new/edit in the right drawer (Save draft · Publish). #}
 {% load dashboard_tags %}
-{% block title %}Promo codes{% endblock %}
-{% block panel %}customer{% endblock %}
+{% block title %}Promotions{% endblock %}
+{% block body_class %}{% if drawer %}has-drawer{% endif %}{% endblock %}
 {% block content %}
 <div class="page-header">
-  <div><h1>Promo codes</h1><p>Discount codes customers enter before booking. Paid by Chicano Cruise — drivers and riders still earn the full fare.</p></div>
-  <div class="page-actions">{% include "dashboard/partials/service_switch.html" %}<a class="btn btn-primary" href="{% url 'dashboard:promo_new' %}">{% icon "plus" 16 %} New promo code</a></div>
+  <div><h1>Promotions</h1><p>Promo codes, ride credits and referrals</p></div>
+  <div class="page-actions"><a class="btn btn-accent" href="{% url 'dashboard:promo_new' %}">{% icon "plus" 17 %}New promo</a></div>
 </div>
-<div class="stats">
-  {% include "dashboard/partials/stat.html" with title="Live codes" value=live_count|num icon="tag" desc="Active and within their dates" %}
-  {% include "dashboard/partials/stat.html" with title="Given away (all time)" value=spent_total|naira icon="money" desc="Total discounts across all codes" %}
+
+<div class="stats three">
+  {% include "dashboard/partials/stat.html" with title="Promo trips this month" value=k.trips|num d=k.trips_delta desc=k.share %}
+  {% include "dashboard/partials/stat.html" with title="Promo spend" value=k.spend d=k.spend_delta desc=k.spend_desc %}
+  {% include "dashboard/partials/stat.html" with title="Referral sign-ups" value=k.refs|num d=k.refs_delta desc="this month" %}
 </div>
-<section class="card">
-  <form class="filters" method="get" data-autosubmit role="search">
-    <div class="f grow"><label for="q">Search</label><div class="search-field">{% icon "search" 16 %}<input id="q" type="search" name="q" value="{{ f.q|default:'' }}" placeholder="Code or description"></div></div>
-    {% include "dashboard/growth/_state_filter.html" %}
-    {% if f.sort %}<input type="hidden" name="sort" value="{{ f.sort }}">{% endif %}
-    <div class="filters-actions"><button class="btn btn-secondary" type="submit">{% icon "search" 16 %} Search</button>
-      {% filters_active "q" "state" as filtered %}{% if filtered %}<a class="btn btn-ghost" href="?">Clear</a>{% endif %}</div>
-  </form>
-  {% if page.object_list %}
-  <div class="table-wrap"><table class="table responsive">
-    <thead><tr>{% sort_th "code" "Code" %}<th>For</th><th>Discount</th>{% sort_th "uses" "Uses" "right" %}{% sort_th "spent" "Given away" "right" %}{% sort_th "ends" "Valid" %}<th>Status</th><th><span class="sr-only">Actions</span></th></tr></thead>
+
+<form class="filters" method="get" data-autosubmit aria-label="Filter promo codes">
+  {% if f.q %}<input type="hidden" name="q" value="{{ f.q }}">{% endif %}
+  {% if f.sort %}<input type="hidden" name="sort" value="{{ f.sort }}">{% endif %}
+  <div class="f"><label for="state">Status</label><select id="state" name="state">
+    <option value="">All</option>
+    <option value="open"{% if f.state == "open" %} selected{% endif %}>Active + scheduled</option>
+    <option value="live"{% if f.state == "live" %} selected{% endif %}>Active</option>
+    <option value="scheduled"{% if f.state == "scheduled" %} selected{% endif %}>Scheduled</option>
+    <option value="ended"{% if f.state == "ended" %} selected{% endif %}>Ended</option></select></div>
+  <div class="f add"><label for="type">Type</label><select id="type" name="type"><option value="">Any</option>
+    <option value="flat"{% if f.type == "flat" %} selected{% endif %}>Fixed amount</option>
+    <option value="percent"{% if f.type == "percent" %} selected{% endif %}>Percent off</option>
+    <option value="first_ride"{% if f.type == "first_ride" %} selected{% endif %}>First ride</option></select></div>
+  {% filters_active "q" "state" "type" as filtered %}{% if filtered %}<div class="filters-actions"><a class="btn btn-ghost" href="?">Clear filters</a></div>{% endif %}
+</form>
+
+{% if page.object_list %}
+<div class="table-wrap">
+  <table class="table responsive">
+    <colgroup><col style="width:17%"><col style="width:19%"><col style="width:18%"><col style="width:17%"><col style="width:16%"><col style="width:13%"></colgroup>
+    <thead><tr>{% sort_th "code" "Code" %}<th>Discount</th><th>Audience</th><th>Status</th>{% sort_th "uses" "Used" %}{% sort_th "spent" "Spend" %}</tr></thead>
     <tbody>{% for p in page %}
-      <tr class="clickable" data-href="{% url 'dashboard:promo_edit' p.pk %}">
-        <td class="primary"><a class="mono" href="{% url 'dashboard:promo_edit' p.pk %}">{{ p.code }}</a><div class="cell-sub">{{ p.description }}</div></td>
-        <td>{% if p.service %}{% service_tag p.service %}{% else %}Cars + bikes{% endif %}{% if p.first_ride_only %}<div class="cell-sub">First ride only</div>{% endif %}</td>
-        <td>{% if p.discount_type == "percent" %}{{ p.value }}%{% if p.max_discount_amount %}<div class="cell-sub">max {{ p.max_discount_amount|naira }}</div>{% endif %}{% else %}{{ p.value|naira }}{% endif %}</td>
-        <td class="right">{{ p.redemptions_count|num }}{% if p.usage_limit %}<div class="cell-sub">of {{ p.usage_limit|num }}</div>{% endif %}</td>
-        <td class="right">{{ p.spent_amount|naira }}{% if p.budget_amount %}<div class="cell-sub">of {{ p.budget_amount|naira }}</div>{% endif %}</td>
-        <td class="nowrap">{{ p.valid_from|date:"j M" }} – {{ p.valid_to|date:"j M Y" }}</td>
-        <td>{% if not p.is_active %}{% badge "inactive" "Switched off" %}{% elif p.valid_to <= now %}{% badge "expired" "Ended" %}{% elif p.valid_from > now %}{% badge "scheduled" "Scheduled" %}{% else %}{% badge "active" "Live" %}{% endif %}</td>
-        <td class="actions"><a class="btn btn-ghost btn-sm" href="{% url 'dashboard:promo_edit' p.pk %}">{% icon "edit" 14 %} Edit</a></td>
+      <tr data-href="{% url 'dashboard:promo_edit' p.pk %}{% if request.GET %}?{{ request.GET.urlencode }}{% endif %}"{% if promo and promo.pk == p.pk %} class="is-selected"{% endif %}>
+        <td class="primary"><a class="mono" href="{% url 'dashboard:promo_edit' p.pk %}">{{ p.code }}</a></td>
+        <td class="ellipsis">{% if p.discount_type == "percent" %}{{ p.value }}%{% if p.max_discount_amount %} · max {{ p.max_discount_amount|naira }}{% endif %}{% else %}{{ p.value|naira }} off{% endif %}</td>
+        <td class="ellipsis">{% if p.first_ride_only %}First {% if p.per_user_limit > 1 %}{{ p.per_user_limit }} rides{% else %}ride{% endif %}{% elif p.service == "car" %}Car trips{% elif p.service == "bike" %}Bike trips{% else %}All users{% endif %}{% if p.first_ride_only and p.service %} · {{ p.service }}s{% endif %}</td>
+        <td>{% if not p.is_active %}<span class="badge badge-neutral">Draft</span>{% elif p.valid_to <= now %}<span class="badge badge-neutral">Ended</span>{% elif p.valid_from > now %}<span class="badge badge-info">Scheduled</span>{% elif p.budget_amount and p.spent_amount >= p.budget_amount %}<span class="badge badge-neutral">Budget used</span>{% else %}<span class="badge badge-good">Active</span>{% endif %}</td>
+        <td class="tabular ellipsis">{{ p.redemptions_count|num }}{% if p.usage_limit %} / {{ p.usage_limit|num }}{% endif %}</td>
+        <td class="tabular">{% if p.spent_amount %}{{ p.spent_amount|short_naira }}{% else %}—{% endif %}</td>
       </tr>{% endfor %}</tbody>
-  </table></div>
-  {% include "dashboard/partials/pager.html" %}
-  {% else %}{% url 'dashboard:promo_new' as new_url %}{% include "dashboard/partials/empty.html" with title="No promo codes here" text="Create a code to reward new or returning customers." action_url=new_url action_label="New promo code" clear_url="?" icon="tag" %}{% endif %}
-</section>
+  </table>
+</div>
+{% include "dashboard/partials/pager.html" %}
+{% else %}
+  <div class="card">{% url 'dashboard:promo_new' as new_url %}{% include "dashboard/partials/empty.html" with title="No promo codes match" text="Create a code to reward new or returning customers." action_url=new_url action_label="New promo" clear_url="?" icon="tag" %}</div>
+{% endif %}
 {% endblock %}
+
+{% block drawer %}{% if drawer %}
+<aside class="drawer" aria-labelledby="promo-h">
+  <form method="post" class="stack" style="height:100%;gap:0" data-promo-form novalidate>{% csrf_token %}
+    <div class="drawer-head">
+      <div class="grow"><h2 id="promo-h">{% if promo %}{{ promo.code }}{% else %}New promo code{% endif %}</h2>
+        <p>{% if promo and promo.is_active %}Published · visible to users{% else %}Draft · not visible to users until published{% endif %}</p></div>
+      <a class="drawer-close" href="{% url 'dashboard:promotions' %}{% if request.GET %}?{{ request.GET.urlencode }}{% endif %}" aria-label="Close panel">{% icon "x" 20 %}</a>
+    </div>
+    <div class="drawer-body">
+      {% if form.non_field_errors %}<div class="alert alert-error">{% icon "alert" 18 %}<div class="alert-body">{{ form.non_field_errors|join:" " }}</div></div>{% endif %}
+      <div class="field{% if form.code.errors %} has-error{% endif %}"><label for="{{ form.code.id_for_label }}">Code</label>
+        <input id="{{ form.code.id_for_label }}" class="mono-input" type="text" name="code" value="{{ form.code.value|default:'' }}" maxlength="30" autocomplete="off" required style="text-transform:uppercase" data-preview-code>
+        {% for e in form.code.errors %}<span class="error">{{ e }}</span>{% endfor %}
+        <span class="help">Letters and numbers, shown to users exactly like this.</span></div>
+
+      <div class="form-grid">
+        <div class="field{% if form.value.errors %} has-error{% endif %}"><label for="{{ form.value.id_for_label }}">Discount</label>
+          <div class="input-wrap"><input id="{{ form.value.id_for_label }}" type="number" step="0.01" min="0" name="value" value="{{ form.value.value|default:'' }}" required data-preview-value>
+            <span class="suffix">
+              <select name="discount_type" aria-label="Discount type" data-native data-preview-type style="height:30px;width:auto;padding:0 28px 0 8px;font-size:12px;font-weight:700;border-radius:6px;background-color:var(--surface-3);border:0">
+                <option value="flat"{% if form.discount_type.value == "flat" %} selected{% endif %}>Flat ₦</option>
+                <option value="percent"{% if form.discount_type.value == "percent" %} selected{% endif %}>% off</option></select></span></div>
+          {% for e in form.value.errors %}<span class="error">{{ e }}</span>{% endfor %}{% for e in form.discount_type.errors %}<span class="error">{{ e }}</span>{% endfor %}</div>
+        <div class="field{% if form.per_user_limit.errors %} has-error{% endif %}"><label for="{{ form.per_user_limit.id_for_label }}">Max per user</label>
+          <div class="input-wrap"><input id="{{ form.per_user_limit.id_for_label }}" type="number" min="1" name="per_user_limit" value="{{ form.per_user_limit.value|default:'1' }}" required data-preview-uses><span class="suffix muted" style="font-weight:600">rides</span></div>
+          {% for e in form.per_user_limit.errors %}<span class="error">{{ e }}</span>{% endfor %}</div>
+      </div>
+      <div class="field{% if form.max_discount_amount.errors %} has-error{% endif %}" data-percent-only><label for="{{ form.max_discount_amount.id_for_label }}">Maximum discount <span class="muted">(percent codes)</span></label>
+        <div class="money-input"><input id="{{ form.max_discount_amount.id_for_label }}" type="number" step="0.01" min="0" name="max_discount_amount" value="{{ form.max_discount_amount.value|default:'' }}"></div>
+        {% for e in form.max_discount_amount.errors %}<span class="error">{{ e }}</span>{% endfor %}</div>
+
+      <div class="form-grid">
+        <div class="field{% if form.valid_from.errors %} has-error{% endif %}"><label for="{{ form.valid_from.id_for_label }}">Starts</label>{{ form.valid_from }}{% for e in form.valid_from.errors %}<span class="error">{{ e }}</span>{% endfor %}</div>
+        <div class="field{% if form.valid_to.errors %} has-error{% endif %}"><label for="{{ form.valid_to.id_for_label }}">Ends</label>{{ form.valid_to }}{% for e in form.valid_to.errors %}<span class="error">{{ e }}</span>{% endfor %}</div>
+      </div>
+
+      <div class="form-grid">
+        <div class="field{% if form.budget_amount.errors %} has-error{% endif %}"><label for="{{ form.budget_amount.id_for_label }}">Total budget</label>
+          <div class="money-input"><input id="{{ form.budget_amount.id_for_label }}" type="number" step="0.01" min="0" name="budget_amount" value="{{ form.budget_amount.value|default:'' }}"></div>
+          {% for e in form.budget_amount.errors %}<span class="error">{{ e }}</span>{% endfor %}<span class="help">Stops automatically when used up.</span></div>
+        <div class="field{% if form.usage_limit.errors %} has-error{% endif %}"><label for="{{ form.usage_limit.id_for_label }}">Total uses</label>
+          <input id="{{ form.usage_limit.id_for_label }}" type="number" min="1" name="usage_limit" value="{{ form.usage_limit.value|default:'' }}" placeholder="No limit">
+          {% for e in form.usage_limit.errors %}<span class="error">{{ e }}</span>{% endfor %}</div>
+      </div>
+
+      <div><div class="label" style="font-size:13px;font-weight:600;color:var(--text-2);margin-bottom:8px">Applies to</div>
+        <div class="chips" role="radiogroup" aria-label="Applies to">
+          <label class="chip-toggle"><input type="radio" name="service" value=""{% if not form.service.value %} checked{% endif %}>Cars + bikes</label>
+          <label class="chip-toggle"><input type="radio" name="service" value="car"{% if form.service.value == "car" %} checked{% endif %}>Cars only</label>
+          <label class="chip-toggle"><input type="radio" name="service" value="bike"{% if form.service.value == "bike" %} checked{% endif %}>Bikes only</label>
+        </div>
+        <label class="check-line" style="margin-top:12px"><input type="checkbox" name="first_ride_only"{% if form.first_ride_only.value %} checked{% endif %} data-preview-first>New users only (first ride{% if form.per_user_limit.value and form.per_user_limit.value != 1 %}s{% endif %})</label>
+      </div>
+
+      <div class="preview-box">
+        <div class="overline">User sees</div>
+        <div class="field" style="margin:8px 0 0"><label class="sr-only" for="{{ form.description.id_for_label }}">What users see</label>
+          <input id="{{ form.description.id_for_label }}" type="text" name="description" maxlength="160" value="{{ form.description.value|default:'' }}" placeholder="Written for you from the fields above" data-preview-desc style="height:44px;font-size:14px"></div>
+        <div style="margin-top:8px;display:flex;gap:10px;align-items:center;padding:10px 12px;background:var(--good-bg);border-radius:var(--r);color:var(--good);font-weight:700;font-size:14px">{% icon "tag" 18 %}<span data-preview-out>—</span></div>
+      </div>
+    </div>
+    <div class="drawer-foot">
+      <button class="btn btn-secondary" type="submit" name="publish" value="0">Save draft</button>
+      <span style="flex:1"></span>
+      <button class="btn btn-accent" type="submit" name="publish" value="1">{% icon "check" 17 %}Publish</button>
+    </div>
+  </form>
+</aside>
+{% endif %}{% endblock %}
+
+{% block scripts %}{% if drawer %}
+<script>
+  // Live "User sees" preview, written from the code, discount and limits (the description field can override it).
+  (function () {
+    var f = document.querySelector("[data-promo-form]");
+    if (!f) return;
+    var q = function (s) { return f.querySelector(s); };
+    var out = q("[data-preview-out]"), desc = q("[data-preview-desc]");
+    function money(v) { return "₦" + Number(v || 0).toLocaleString("en-NG", { maximumFractionDigits: 0 }); }
+    function build() {
+      var code = (q("[data-preview-code]").value || "CODE").toUpperCase();
+      var v = q("[data-preview-value]").value, t = q("[data-preview-type]").value, n = parseInt(q("[data-preview-uses]").value || "1", 10);
+      q("[data-percent-only]").style.display = t === "percent" ? "" : "none";
+      var off = t === "percent" ? (parseInt(v || 0, 10) + "% off") : (money(v) + " off");
+      var rides = q("[data-preview-first]").checked ? (n > 1 ? "your first " + n + " rides" : "your first ride") : (n > 1 ? "your next " + n + " rides" : "your next ride");
+      var auto = off + " " + rides;
+      desc.placeholder = auto;
+      out.textContent = code + " · " + (desc.value.trim() || auto);
+    }
+    f.addEventListener("input", build); f.addEventListener("change", build); build();
+    // Fill the description from the preview when left empty, so users always see a clear line.
+    f.addEventListener("submit", function () { if (!desc.value.trim()) desc.value = desc.placeholder; });
+  })();
+</script>
+{% endif %}{% endblock %}

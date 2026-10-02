@@ -78,27 +78,37 @@ def minutes(seconds):
     return f"{round((seconds or 0) / 60)} min"
 
 
-# Status -> colour family (see .badge-* in dashboard.css). Unknown statuses are neutral.
+# Status -> colour family, as in the design boards (DS6 "Status badges"). Unknown statuses are neutral.
+#   good = green · warn = orange (searching) · amber = review / waiting / on hold · info = blue
+#   bad = red · dark = ink (on trip, banned) · neutral = cream
 TONE = {
-    "active": "good", "approved": "good", "completed": "good", "paid": "good", "succeeded": "good", "live": "good", "resolved": "good", "online": "good", "done": "good",
-    "pending": "warn", "under_review": "warn", "documents_pending": "warn", "applied": "warn", "searching": "warn",
-    "processing": "warn", "in_review": "warn", "partially_refunded": "warn", "acknowledged": "warn", "open": "warn", "high": "warn",
-    "scheduled": "info", "accepted": "info", "arrived": "info", "in_progress": "info", "refunded": "info",
-    "suspended": "bad", "banned": "bad", "rejected": "bad", "cancelled": "bad", "failed": "bad", "no_provider": "bad",
-    "expired": "bad", "urgent": "bad", "action_needed": "bad", "on_hold": "bad", "inactive": "neutral",
+    "active": "good", "approved": "good", "completed": "good", "paid": "good", "succeeded": "good", "live": "good",
+    "resolved": "good", "online": "good", "done": "good", "verified": "good",
+    "searching": "warn",
+    "pending": "amber", "under_review": "amber", "documents_pending": "amber", "applied": "amber", "in_review": "amber",
+    "partially_refunded": "amber", "open": "amber", "high": "amber", "on_hold": "amber", "review": "amber", "normal": "neutral",
+    "scheduled": "info", "accepted": "info", "arrived": "info", "processing": "info", "refunded": "info", "acknowledged": "info",
+    "in_progress": "dark", "banned": "dark",
+    "suspended": "bad", "rejected": "bad", "cancelled": "bad", "failed": "bad", "no_provider": "bad",
+    "expired": "bad", "urgent": "bad", "action_needed": "bad",
+    "inactive": "neutral", "ended": "neutral", "closed": "neutral", "low": "neutral",
 }
+# Board wording for a few statuses (the model labels are kept everywhere else).
+BADGE_TEXT = {"in_progress": "On trip", "no_provider": "No driver/rider", "on_hold": "On hold"}
 
 
 @register.simple_tag
 def badge(value, text=None):
-    return format_html('<span class="badge badge-{}">{}</span>', TONE.get(str(value), "neutral"), text or label(value))
+    key = str(value)
+    return format_html('<span class="badge badge-{}">{}</span>', TONE.get(key, "neutral"), text or BADGE_TEXT.get(key) or label(value))
 
 
 @register.simple_tag
 def service_tag(service):
     if not service:
         return ""
-    return format_html('<span class="svc svc-{}">{}</span>', service, "Car" if service == "car" else "Bike")
+    return format_html('<span class="svc svc-{}">{}{}</span>', service, mark_safe(icon_svg("car" if service == "car" else "bike", 15)),
+                       "Car" if service == "car" else "Bike")
 
 
 @register.simple_tag(takes_context=True)
@@ -114,68 +124,97 @@ def query(context, **changes):
     return "?" + encoded if encoded else "?"
 
 
-# Minimal stroke icons (24×24, currentColor) for the sidebar.
+# Stroke icons (24×24, currentColor, stroke 2) — the exact glyphs from the Super Admin design boards (A01–A10, DS6).
+# A value is either SVG child markup ("<path .../>") or a bare path "d" string.
 ICONS = {
-    "grid": "M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z",
-    "radar": "M12 12m-8 0a8 8 0 1 0 16 0a8 8 0 1 0-16 0M12 12m-4 0a4 4 0 1 0 8 0a4 4 0 1 0-8 0M12 12l6-6",
-    "route": "M6 19a2 2 0 1 0 0-4a2 2 0 0 0 0 4zM18 9a2 2 0 1 0 0-4a2 2 0 0 0 0 4zM8 17h6a3 3 0 0 0 0-6h-4a3 3 0 0 1 0-6h6",
-    "wheel": "M12 12m-8 0a8 8 0 1 0 16 0a8 8 0 1 0-16 0M12 12m-2 0a2 2 0 1 0 4 0a2 2 0 1 0-4 0M12 4v6M5 16l5-3M19 16l-5-3",
-    "doc": "M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6",
-    "people": "M9 11a3 3 0 1 0 0-6a3 3 0 0 0 0 6zM3 20c0-3 3-5 6-5s6 2 6 5M17 11a2.5 2.5 0 1 0 0-5M18 15c2 .5 3 2 3 5",
-    "bank": "M3 10l9-6l9 6M5 10v8M9 10v8M15 10v8M19 10v8M3 20h18",
-    "tag": "M3 12V4h8l10 10l-8 8zM7.5 8.5h.01",
-    "lifebuoy": "M12 12m-8 0a8 8 0 1 0 16 0a8 8 0 1 0-16 0M12 12m-3 0a3 3 0 1 0 6 0a3 3 0 1 0-6 0M6 6l4 4M18 6l-4 4M6 18l4-4M18 18l-4-4",
-    "gear": "M12 15a3 3 0 1 0 0-6a3 3 0 0 0 0 6zM19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3a1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5a1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8a1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1a1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5a1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z",
+    # sidebar
+    "grid": '<rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/>',
+    "people": '<circle cx="9" cy="8" r="3.5"/><path d="M2 20a7 7 0 0 1 14 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 13.5a7 7 0 0 1 4 6.5"/>',
+    "bike": '<circle cx="5.5" cy="16.5" r="3.5"/><circle cx="18.5" cy="16.5" r="3.5"/><path d="M5.5 16.5 9.5 10h5l4 6.5M14.5 10 13 6h3.5M9.5 10 8 7.5H5"/>',
+    "car": '<path d="M5 17H4a1 1 0 0 1-1-1v-3l2-5a2 2 0 0 1 1.9-1.3h10.2A2 2 0 0 1 19 8l2 5v3a1 1 0 0 1-1 1h-1"/><path d="M3 12h18"/><circle cx="7.5" cy="17" r="2"/><circle cx="16.5" cy="17" r="2"/><path d="M9.5 17h5"/>',
+    "wrench": '<path d="M14.5 6.5a4 4 0 0 0 5 5L21 13l-8 8-3-3 8-8-1.5-1.5a4 4 0 0 1-5-5L13 2z"/>',
+    "doc": '<path d="M14 3H6v18h12V7z"/><path d="M14 3v4h4"/>',
+    "route": '<circle cx="6" cy="19" r="2"/><circle cx="18" cy="5" r="2"/><path d="M8 19h8a3.5 3.5 0 0 0 0-7H8a3.5 3.5 0 0 1 0-7h8"/>',
+    "radar": '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+    "headset": '<path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="14" width="4" height="6" rx="1"/><rect x="17" y="14" width="4" height="6" rx="1"/>',
+    "card": '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 10h18M7 15h3"/>',
+    "bank": '<path d="M3 10h18L12 4z"/><path d="M5 10v8M9.5 10v8M14.5 10v8M19 10v8M3 20h18"/>',
+    "tag": '<path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="8" r="1.5"/>',
+    "gift": '<rect x="3" y="8" width="18" height="4"/><path d="M5 12v9h14v-9M12 8v13M12 8S10 3 7.5 4 8 8 12 8zM12 8s2-5 4.5-4S16 8 12 8z"/>',
+    "chart": '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+    "sliders": '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
+    "shield": '<path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6z"/><path d="m9 12 2 2 4-4"/>',
+    "more": '<circle cx="5" cy="12" r="1.2"/><circle cx="12" cy="12" r="1.2"/><circle cx="19" cy="12" r="1.2"/>',
+    # top bar + actions
+    "search": '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>',
+    "globe": '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+    "bell": '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 21h4"/>',
+    "calendar": '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+    "download": '<path d="M12 4v12M7 11l5 5 5-5M4 20h16"/>',
+    "arrow-up": '<path d="M12 19V5M6 11l6-6 6 6"/>',
+    "arrow-down": '<path d="M12 5v14M6 13l6 6 6-6"/>',
+    "check-circle": '<circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/>',
+    "x": '<path d="M6 6l12 12M18 6 6 18"/>',
+    "cash": '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 10v4M18 10v4"/>',
+    "hourglass": '<path d="M6 3h12M6 21h12M7 3c0 5 10 5 10 9s-10 4-10 9M17 3c0 5-10 5-10 9"/>',
+    "alert": '<path d="M12 3 2 20h20z"/><path d="M12 9v5M12 17h.01"/>',
+    "chev": '<path d="m6 9 6 6 6-6"/>',
+    "chev-right": '<path d="m9 6 6 6-6 6"/>',
+    "chev-left": '<path d="m15 6-6 6 6 6"/>',
+    "plus": '<path d="M12 5v14M5 12h14"/>',
+    "minus": '<path d="M5 12h14"/>',
+    "megaphone": '<path d="M3 10v4h4l8 5V5L7 10z"/><path d="M19 9a4 4 0 0 1 0 6"/>',
+    "ban": '<circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/>',
+    "check": '<path d="m5 12 5 5 9-10"/>',
+    "message": '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
+    "phone": '<path d="M5 4h4l2 5-2.5 1.5a11 11 0 0 0 5 5L15 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 6a2 2 0 0 1 2-2z"/>',
+    "wallet": '<path d="M4 7h15a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z"/><path d="M4 7l12-3v3"/><path d="M16 13.5h.01"/>',
+    "id": '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2"/><path d="M6 16a3 3 0 0 1 6 0M14 10h4M14 14h4"/>',
+    "refresh": '<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>',
+    "info": '<circle cx="12" cy="12" r="9"/><path d="M12 7v6M12 16.5h.01"/>',
+    "percent": '<path d="M19 5 5 19"/><circle cx="7" cy="7" r="2"/><circle cx="17" cy="17" r="2"/>',
+    # kept from the previous set (same names as before, design-consistent strokes)
+    "wheel": '<circle cx="5.5" cy="16.5" r="3.5"/><circle cx="18.5" cy="16.5" r="3.5"/><path d="M5.5 16.5 9.5 10h5l4 6.5M14.5 10 13 6h3.5M9.5 10 8 7.5H5"/>',
+    "lifebuoy": '<path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="3" y="14" width="4" height="6" rx="1"/><rect x="17" y="14" width="4" height="6" rx="1"/>',
+    "gear": '<path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>',
+    "trophy": '<rect x="3" y="8" width="18" height="4"/><path d="M5 12v9h14v-9M12 8v13M12 8S10 3 7.5 4 8 8 12 8zM12 8s2-5 4.5-4S16 8 12 8z"/>',
     "logout": "M15 4h4v16h-4M10 8l-4 4l4 4M6 12h10",
-    "chart": "M4 20V10M10 20V4M16 20v-7M22 20H2",
     "gauge": "M12 14l4-4M3.5 17a9 9 0 1 1 17 0M12 14h.01",
-    "card": "M3 6h18v12H3zM3 10h18M7 15h4",
     "bag": "M5 8h14l-1 12H6zM9 8V6a3 3 0 0 1 6 0v2",
-    "trophy": "M8 4h8v5a4 4 0 0 1-8 0zM8 6H4a3 3 0 0 0 4 4M16 6h4a3 3 0 0 1-4 4M12 13v4M8 20h8",
-    "megaphone": "M3 11v2a1 1 0 0 0 1 1h3l6 4V6L7 10H4a1 1 0 0 0-1 1zM17 9a4 4 0 0 1 0 6M8 14l1 5",
-    "id": "M3 5h18v14H3zM8 11a2 2 0 1 0 0-.01M5.5 16c.5-1.5 1.5-2 2.5-2s2 .5 2.5 2M14 10h4M14 14h3",
-    "shield": "M12 3l8 3v6c0 5-3.5 8-8 9c-4.5-1-8-4-8-9V6zM9 12l2 2l4-4",
+    "package": '<path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/>',
     "list": "M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01",
-    "search": "M11 18a7 7 0 1 0 0-14a7 7 0 0 0 0 14zM21 21l-5-5",
-    "bell": "M6 17V11a6 6 0 1 1 12 0v6l2 2H4zM10 21h4",
     "menu": "M4 6h16M4 12h16M4 18h16",
-    "chev": "M6 9l6 6l6-6",
     "collapse": "M15 6l-6 6l6 6M20 4v16",
-    "plus": "M12 5v14M5 12h14",
-    "download": "M12 4v11M7 10l5 5l5-5M4 20h16",
-    "check": "M5 12l5 5l9-10",
-    "clock": "M12 21a9 9 0 1 0 0-18a9 9 0 0 0 0 18zM12 7v5l3 2",
-    "user": "M12 12a4 4 0 1 0 0-8a4 4 0 0 0 0 8zM4 21c0-4 4-6 8-6s8 2 8 6",
-    "money": "M3 7h18v10H3zM12 15a3 3 0 1 0 0-6a3 3 0 0 0 0 6zM6 10v4M18 10v4",
+    "clock": '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    "user": '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',
+    "money": '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 10v4M18 10v4"/>',
     "filter": "M3 5h18l-7 8v6l-4-2v-4z",
     "arrow": "M5 12h14M13 6l6 6l-6 6",
     "inbox": "M3 13l3-8h12l3 8v6H3zM3 13h5l1 3h6l1-3h5",
-    "alert": "M12 3l10 18H2zM12 10v5M12 18h.01",
-    "more": "M12 11a1 1 0 1 0 0 2a1 1 0 1 0 0-2zM5 11a1 1 0 1 0 0 2a1 1 0 1 0 0-2zM19 11a1 1 0 1 0 0 2a1 1 0 1 0 0-2z",
-    "x": "M6 6l12 12M18 6L6 18",
-    "chev-left": "M15 6l-6 6l6 6",
-    "chev-right": "M9 6l6 6l-6 6",
     "sort": "M8 9l4-4l4 4M8 15l4 4l4-4",
     "sort-up": "M8 14l4-4l4 4",
     "sort-down": "M8 10l4 4l4-4",
-    "trend-up": "M4 16l6-6l4 4l6-6M14 8h6v6",
-    "trend-down": "M4 8l6 6l4-4l6 6M14 16h6v-6",
+    "trend-up": '<path d="M12 19V5M6 11l6-6 6 6"/>',
+    "trend-down": '<path d="M12 5v14M6 13l6 6 6-6"/>',
     "eye": "M2 12s3.5-7 10-7s10 7 10 7s-3.5 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6a3 3 0 0 0 0 6z",
     "edit": "M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4",
-    "ban": "M12 21a9 9 0 1 0 0-18a9 9 0 0 0 0 18zM5.6 5.6l12.8 12.8",
-    "refresh": "M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6",
-    "info": "M12 21a9 9 0 1 0 0-18a9 9 0 0 0 0 18zM12 11v6M12 7.5h.01",
-    "calendar": "M4 6h16v14H4zM4 10h16M8 3v4M16 3v4",
     "external": "M14 4h6v6M20 4l-9 9M18 14v6H4V6h6",
+    "pin": '<path d="M12 21s-7-6.2-7-11.5a7 7 0 0 1 14 0C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/>',
+    "box": '<path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4M12 11v10"/>',
 }
 
 
+def icon_svg(name, size=18, stroke=2) -> str:
+    body = ICONS.get(name, ICONS["grid"])
+    if not body.startswith("<"):
+        body = f'<path d="{body}"/>'
+    return (f'<svg width="{int(size)}" height="{int(size)}" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+            f'stroke-width="{stroke}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{body}</svg>')
+
+
 @register.simple_tag
-def icon(name, size=18):
-    return mark_safe(
-        f'<svg width="{int(size)}" height="{int(size)}" viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-        f'stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
-        f'<path d="{ICONS.get(name, ICONS["grid"])}"/></svg>')
+def icon(name, size=18, stroke=2):
+    return mark_safe(icon_svg(name, size, stroke))
 
 
 # Greater Lagos bounds for the schematic live map (no map tiles needed).
@@ -232,9 +271,9 @@ def delta_badge(value, bad_up=False):
     tone = "bad" if (up == bool(bad_up)) else "good"
     if value == 0:
         tone = "neutral"
-    return format_html('<span class="delta delta-{}" title="Compared with the previous period of the same length">{}{}%'
+    return format_html('<span class="delta delta-{}" title="Compared with the previous period of the same length">{}{}{}%'
                        '<span class="sr-only"> {} vs previous period</span></span>', tone,
-                       icon("trend-up" if up else "trend-down", 13), abs(value), "up" if up else "down")
+                       icon("arrow-up" if up else "arrow-down", 13, 2.6), "+" if up else "−", abs(value), "up" if up else "down")
 
 
 @register.simple_tag(takes_context=True)
@@ -261,3 +300,98 @@ def elided_pages(page):
 @register.filter
 def is_ellipsis(value):
     return not isinstance(value, int)
+
+
+# =========================================================================== Super Admin boards
+@register.filter
+def trip_ref(ride_or_id) -> str:
+    """Short trip reference shown on the boards, e.g. TR-3FA85F (first 6 hex digits of the ride's UUID)."""
+    raw = getattr(ride_or_id, "pk", ride_or_id)
+    return "TR-" + str(raw).replace("-", "")[:6].upper()
+
+
+@register.filter
+def masked_phone(phone) -> str:
+    """+2348034125567 -> +234 803 ••• 5567"""
+    p = str(phone or "")
+    if p.startswith("+234") and len(p) >= 14:
+        return f"+234 {p[4:7]} ••• {p[-4:]}"
+    return p[:-4] + "••••" if len(p) > 6 else p
+
+
+@register.filter
+def spaced_phone(phone) -> str:
+    """+2348034125567 -> +234 803 412 5567"""
+    p = str(phone or "")
+    if p.startswith("+234") and len(p) == 14:
+        return f"+234 {p[4:7]} {p[7:10]} {p[10:]}"
+    return p
+
+
+@register.filter
+def short_naira(kobo) -> str:
+    from ..metrics import short_naira as fmt
+    return fmt(kobo)
+
+
+@register.simple_tag
+def ride_badge(ride):
+    """Ride status in the boards' words: Searching · Driver/Rider arriving · On trip · Payment failed · Completed …"""
+    status = ride.status
+    who = "Rider" if ride.service == "bike" else "Driver"
+    if getattr(ride, "payment_status", "") == "failed" and status == "completed":
+        return format_html('<span class="badge badge-bad">Payment failed</span>')
+    words = {"accepted": f"{who} arriving", "arrived": f"{who} at pickup", "in_progress": "On trip",
+             "no_provider": f"No {who.lower()} found"}
+    return format_html('<span class="badge badge-{}">{}</span>', TONE.get(status, "neutral"), words.get(status) or label(status))
+
+
+@register.simple_tag
+def wait_badge(since, now=None):
+    """'Waiting 6:12' chip: amber under 5 minutes, red after."""
+    now = now or timezone.now()
+    secs = max(0, int((now - since).total_seconds()))
+    tone = "bad" if secs >= 300 else "amber"
+    return format_html('<span class="badge badge-{} nodot sm">{}</span>', tone, f"{secs // 60}m {secs % 60:02d}s")
+
+
+@register.simple_tag
+def hour_chart(rows, compare=None):
+    """
+    Grouped bars, cars vs bikes per hour (A01 "Completed trips by hour"): 700×220 viewBox, 5 grid lines,
+    12 px bars with 3 px rounded tops, labels every second hour. Each bar has a <title> for hover.
+    """
+    W, H, LEFT, BASE, TOP = 700, 220, 40, 194, 10
+    top = max([max(r["car"], r["bike"]) for r in rows] + [1])
+    step = max(1, top // 4)
+    nice = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000, 5000]
+    step = next((n for n in nice if n * 4 >= top), step)
+    ymax = step * 4
+    parts = [f'<svg class="chart-svg" viewBox="0 0 {W} {H}" role="img" aria-label="Completed trips per hour, cars and bikes">']
+    for i in range(5):
+        y = BASE - (BASE - TOP) * i / 4
+        parts.append(f'<line x1="{LEFT}" x2="{W}" y1="{y:.1f}" y2="{y:.1f}" stroke="#E6E1D8" stroke-width="1"/>'
+                     f'<text x="32" y="{y + 4:.1f}" text-anchor="end" font-size="11" fill="#6B645A">{step * i:,}</text>')
+    n = len(rows) or 1
+    slot = (W - LEFT) / n
+    for i, r in enumerate(rows):
+        cx = LEFT + slot * i + slot / 2
+        for j, (key, color, name) in enumerate((("car", "#1A78A8", "Cars"), ("bike", "#D9730D", "Bikes"))):
+            v = r[key]
+            h = (BASE - TOP) * v / ymax
+            x = cx - 13 + j * 14
+            y = BASE - h
+            if v:
+                rr = min(3, h)
+                parts.append(f'<path class="bar" d="M{x:.1f} {BASE} V{y + rr:.1f} Q{x:.1f} {y:.1f} {x + rr:.1f} {y:.1f} H{x + 12 - rr:.1f} '
+                             f'Q{x + 12:.1f} {y:.1f} {x + 12:.1f} {y + rr:.1f} V{BASE} Z" fill="{color}"><title>{r["label"]} · {name}: {v:,}</title></path>')
+        if i % 2 == 0:
+            parts.append(f'<text x="{cx:.1f}" y="212" text-anchor="middle" font-size="11" fill="#6B645A">{r["label"]}</text>')
+    parts.append("</svg>")
+    return mark_safe("".join(parts))
+
+
+@register.filter
+def user_ref(user) -> str:
+    """Short account reference, e.g. US-20931F (first 6 hex digits of the user's UUID)."""
+    return "US-" + str(getattr(user, "pk", user)).replace("-", "")[:6].upper()

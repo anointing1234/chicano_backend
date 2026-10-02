@@ -156,7 +156,7 @@ class VehicleApproveView(APIView):
         tags=[TAG], summary="Approve a vehicle / bike",
         description=("**POST /api/v1/staff/vehicles/{id}/approve/** · Bearer (compliance).\n\n"
                      "Choose which ride types it may serve. Each must match the vehicle kind (car/bike) and the vehicle "
-                     "year must meet the ride type's minimum. Bikes need both helmets recorded."),
+                     "year must meet the ride type's minimum. Dispatch bikes need the rider's helmet recorded."),
         request=VehicleApproveSerializer, responses={200: VehicleSerializer, **errors(400, 401, 403, 404)},
     )
     def post(self, request, pk):

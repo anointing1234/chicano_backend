@@ -217,7 +217,8 @@ class StaffRideDetailSerializer(serializers.ModelSerializer):
                   "stops", "scheduled_for", "distance_m", "duration_s",
                   "gross_amount", "discount_amount", "wait_charge_amount", "total_amount", "tip_amount", "commission_amount",
                   "cancellation_fee_amount", "refunded_amount", "payment_method", "payment_status", "cash_collected_at",
-                  "helmet_handed_over_at", "helmet_returned_at", "needs_manual_dispatch",
+                  "package_kind", "package_size", "package_contents", "package_fragile", "recipient_name", "recipient_phone",
+                  "package_collected_at", "helmet_handed_over_at", "helmet_returned_at", "needs_manual_dispatch",
                   "requested_at", "accepted_at", "arrived_at", "started_at", "completed_at", "cancelled_at", "cancelled_by",
                   "cancel_reason", "events", "offers", "ratings"]
 

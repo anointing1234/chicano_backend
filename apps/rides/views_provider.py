@@ -1,5 +1,5 @@
 """
-Trip endpoints for the Driver app · Cars and the Rider app · Bikes.
+Trip endpoints for the Driver app · Cars and the Rider app · Bikes (dispatch: riders deliver packages).
 
     GET  /api/v1/provider/offers/current/            poll every 3 s while online (204 = nothing right now)
     POST /api/v1/provider/offers/{id}/accept/
@@ -7,11 +7,11 @@ Trip endpoints for the Driver app · Cars and the Rider app · Bikes.
     GET  /api/v1/provider/trips/current/             the trip in progress (204 = none)
     GET  /api/v1/provider/trips/                     history
     POST /api/v1/provider/trips/{id}/arrive/
-    POST /api/v1/provider/trips/{id}/helmet-check/   bikes only, required before start
+    POST /api/v1/provider/trips/{id}/package-collected/  bikes only: package in hand, required before start
+    POST /api/v1/provider/trips/{id}/helmet-check/   old name of package-collected (kept for older rider apps)
     POST /api/v1/provider/trips/{id}/start/
     POST /api/v1/provider/trips/{id}/complete/
     POST /api/v1/provider/trips/{id}/collect-cash/   cash rides: confirm cash received
-    POST /api/v1/provider/trips/{id}/helmet-returned/ bikes: passenger returned the helmet
     POST /api/v1/provider/trips/{id}/cancel/         before pickup (ride is re-dispatched, customer not charged)
     POST /api/v1/provider/trips/{id}/no-show/        after the free wait at pickup (customer pays the fee)
     POST /api/v1/provider/trips/{id}/rate/           rate the customer
@@ -31,7 +31,7 @@ from apps.support.serializers import SOSAlertSerializer, SOSRequestSerializer
 from apps.support.services import raise_sos
 
 from . import dispatch, services
-from .models import PROVIDER_BUSY_STATUSES, OfferStatus, RatingDirection, Ride, RideEvent, RideOffer
+from .models import PROVIDER_BUSY_STATUSES, OfferStatus, RatingDirection, Ride, RideOffer
 from .serializers import CancelSerializer, OfferSerializer, ProviderTripSerializer, RateSerializer, RatingSerializer
 
 
@@ -139,14 +139,6 @@ def _trip_action(name: str, doc: str, fn, request_serializer=None):
     return _View
 
 
-def _helmet_returned(ride, payload, request):
-    if ride.service != "bike":
-        raise Conflict("not_bike_ride", "Helmet checks are only for bike trips.")
-    ride.helmet_returned_at = timezone.now()
-    ride.save(update_fields=["helmet_returned_at", "updated_at"])
-    RideEvent.objects.create(ride=ride, event="helmet_returned", actor=request.user)
-
-
 def _collect_cash(ride, payload, request):
     from apps.payments.services import collect_cash
     if ride.status != "completed":
@@ -155,16 +147,21 @@ def _collect_cash(ride, payload, request):
 
 
 ArriveView = _trip_action("arrive", "I've arrived at pickup\nNotifies the customer. Starts the free waiting timer.", lambda r, p, q: services.arrive(r))
-HelmetCheckView = _trip_action("helmet-check", "Confirm passenger helmet handed over (bikes)\nRequired before `start` on bike trips (409 `helmet_check_required` otherwise).",
-                               lambda r, p, q: services.confirm_helmet(r))
-StartView = _trip_action("start", "Start trip\nCustomer is on board. Waiting charges (after the free wait) are added here.", lambda r, p, q: services.start(r))
+PackageCollectedView = _trip_action(
+    "package-collected", "Package collected (bike deliveries)\nThe rider has the package from the sender and it's secured. "
+    "Required before `start` on bike deliveries (409 `package_not_collected` otherwise). Calling it twice is fine.",
+    lambda r, p, q: services.confirm_package_collected(r))
+HelmetCheckView = _trip_action(
+    "helmet-check", "Package collected (old name)\nSame as `package-collected`. Kept so older Rider app builds keep working.",
+    lambda r, p, q: services.confirm_package_collected(r))
+StartView = _trip_action("start", "Start trip / delivery\nCars: the customer is on board. Bikes: the package is collected and the rider "
+                         "heads to the recipient. Waiting charges (after the free wait) are added here.", lambda r, p, q: services.start(r))
 CompleteView = _trip_action("complete", "Complete trip\nSettles the fare. Cash rides: then show 'Collect ₦X' using `cash_due_amount` and call collect-cash.",
                             lambda r, p, q: services.complete(r))
 CollectCashView = _trip_action("collect-cash", "Confirm cash collected\nCash rides only. Records the cash against your earnings balance.", _collect_cash)
-HelmetReturnedView = _trip_action("helmet-returned", "Passenger returned the helmet (bikes)", _helmet_returned)
 CancelTripView = _trip_action("cancel", "Cancel before pickup\nThe ride is offered to someone else; the customer isn't charged. Counts toward your cancellation rate.",
                               lambda r, p, q: services.cancel_by_provider(r, p.get("reason", "")), CancelSerializer)
-NoShowView = _trip_action("no-show", "Customer didn't show up\nAllowed after the free waiting time at pickup; the customer pays the cancellation fee (credited to you).",
+NoShowView = _trip_action("no-show", "Customer / sender didn't show up\nAllowed after the free waiting time at pickup; the customer pays the cancellation fee (credited to you).",
                           lambda r, p, q: services.cancel_by_provider(r, "Customer no-show", no_show=True))
 
 

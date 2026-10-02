@@ -62,14 +62,22 @@ def notify(user, title: str, body: str, data: dict | None = None) -> Notificatio
 
 def raise_sos(user, ride=None, lat=None, lng=None) -> SOSAlert:
     """Alert the safety team and the customer's emergency contacts (by SMS, works without data on their side)."""
+    # Save the alert FIRST so the safety team always sees it, even if texting the contacts fails.
+    alert = SOSAlert.objects.create(ride=ride, raised_by=user, lat=lat, lng=lng, contacts_notified=[])
     contacts = []
     if hasattr(user, "customer_profile"):
         from apps.accounts.services import send_sms
+        link = f"{settings.SHARE_BASE_URL}{ride.share_token}" if ride else ""
         for c in user.customer_profile.emergency_contacts.all():
-            link = f"{settings.SHARE_BASE_URL}{ride.share_token}" if ride else ""
-            send_sms(c.phone, f"{user.first_name or 'Your contact'} pressed SOS on Chicano Cruise. Live trip: {link}")
-            contacts.append({"name": c.name, "phone": c.phone})
-    alert = SOSAlert.objects.create(ride=ride, raised_by=user, lat=lat, lng=lng, contacts_notified=contacts)
+            try:
+                send_sms(c.phone, f"{user.first_name or 'Your contact'} pressed SOS on Chicano Cruise. Live trip: {link}")
+                contacts.append({"name": c.name, "phone": c.phone})
+            except Exception:   # an SMS outage must never block an SOS
+                log.exception("SOS SMS to emergency contact failed")
+                contacts.append({"name": c.name, "phone": c.phone, "failed": True})
+        if contacts:
+            alert.contacts_notified = contacts
+            alert.save(update_fields=["contacts_notified", "updated_at"])
     if ride:
         from apps.rides.models import RideEvent
         RideEvent.objects.create(ride=ride, event="sos_raised", actor=user, data={"alert_id": str(alert.id)})

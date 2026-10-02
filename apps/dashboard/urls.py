@@ -28,6 +28,7 @@ urlpatterns = [
     path("trips/", trips.trip_list, name="trips"),
     path("trips/<uuid:pk>/", trips.trip_detail, name="trip_detail"),
     path("trips/<uuid:pk>/refund/", trips.trip_refund, name="trip_refund"),
+    path("trips/<uuid:pk>/no-refund/", trips.trip_no_refund, name="trip_no_refund"),
     path("trips/<uuid:pk>/cancel/", trips.trip_cancel, name="trip_cancel"),
     path("payments/", payments.payments, name="payments"),
     path("promotions/", growth.promotions, name="promotions"),
@@ -51,10 +52,12 @@ urlpatterns = [
     path("vehicles/<uuid:pk>/<str:action>/", providers.vehicle_action, name="vehicle_action"),     # approve|reject
     path("documents/", providers.document_list, name="documents"),
     path("documents/<uuid:pk>/review/", providers.document_review, name="document_review"),
-    path("documents/<uuid:pk>/file/", providers.document_file, name="document_file"),             # private file (?side=back)
+    path("documents/<uuid:pk>/file/", providers.document_file, name="document_file"),
+    path("documents/<uuid:pk>/remind/", providers.document_remind, name="document_remind"),             # private file (?side=back)
     path("documents/<uuid:pk>/<str:action>/", providers.document_action, name="document_action"), # approve|reject
     path("payouts/", payouts.payout_list, name="payouts"),
     path("payouts/run/", payouts.payout_run, name="payout_run"),
+    path("payouts/bulk/", payouts.payout_bulk, name="payout_bulk"),                                  # paid | failed | export
     path("payouts/<uuid:pk>/<str:action>/", payouts.payout_action, name="payout_action"),          # paid|failed
     path("incentives/", growth.incentives, name="incentives"),
     path("incentives/new/", growth.incentive_edit, name="incentive_new"),
@@ -63,6 +66,7 @@ urlpatterns = [
     # Administration
     path("broadcasts/", admin.broadcasts, name="broadcasts"),
     path("users/", users.user_list, name="users"),
+    path("users/bulk/", users.user_bulk, name="user_bulk"),                                          # message | export | suspend
     path("users/<uuid:pk>/", users.user_detail, name="user_detail"),
     path("users/<uuid:pk>/<str:action>/", users.user_set_status, name="user_status"),              # suspend|ban|reinstate
     path("settings/", admin.settings_home, name="settings"),

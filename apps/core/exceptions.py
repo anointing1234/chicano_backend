@@ -20,7 +20,7 @@ Codes used across the API:
     conflict (409)              action not allowed in the current state (e.g. cancel a completed ride)
     throttled (429)             too many requests; `details.retry_after_seconds`
     <domain codes>              raised with `ApiError`, e.g. "otp_invalid", "quote_expired",
-                                "helmet_check_required", "no_active_ride"
+                                "package_required", "package_not_collected", "no_active_ride"
 """
 from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
 from django.http import Http404

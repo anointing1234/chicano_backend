@@ -63,7 +63,8 @@ def test_login_and_roles(demo, user_by_phone):
     assert finance.get(reverse("dashboard:payouts")).status_code == 200
     assert finance.get(reverse("dashboard:documents")).status_code == 403      # compliance only
     menu = finance.get(reverse("dashboard:overview")).content.decode()
-    assert "Payouts &amp; commission" in menu and "Applications &amp; documents" not in menu
+    nav = menu.split('<nav', 1)[1].split('</nav>', 1)[0]
+    assert f'href="{reverse("dashboard:payouts")}"' in nav and f'href="{reverse("dashboard:documents")}"' not in nav
 
     # Customers can't use the dashboard even with a password set.
     ada = user_by_phone("+2348030000001")
@@ -265,9 +266,9 @@ def test_manual_dispatch(demo, client_for, user_by_phone):
                                             "pickup_address": "Allen Avenue", "dropoff_address": "VI"}, format="json").json()
     ops = signed_in("ops")
     page = ops.get(reverse("dashboard:dispatch") + f"?ride={ride['id']}").content.decode()
-    assert "Nobody eligible within 5 km" in page and f"?ride={ride['id']}&amp;wide=1" in page
+    assert "Nobody free within 5 km" in page and f"?ride={ride['id']}&amp;wide=1" in page
     wide = ops.get(reverse("dashboard:dispatch") + f"?ride={ride['id']}&wide=1").content.decode()
-    assert "Emeka Obi" in wide and "km away" in wide
+    assert "Emeka Obi" in wide and " km<" in wide
 
     emeka = user_by_phone("+2348050000001").provider_profile
     ProviderProfile.objects.filter(pk=emeka.pk).update(is_online=False)

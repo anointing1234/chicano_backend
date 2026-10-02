@@ -65,7 +65,7 @@ RIDE_TYPES = [
     ("car_standard", "car", "Cruise", "Affordable everyday rides", 4, 2008, 1, (50000, 15000, 2000, 150000, 10000, 50000, 3000, 15)),
     ("car_xl", "car", "Cruise XL", "Bigger cars for up to 6", 6, 2010, 2, (80000, 22000, 3000, 250000, 10000, 70000, 4000, 15)),
     ("car_premium", "car", "Cruise Premium", "Newer cars, top-rated drivers", 4, 2019, 3, (120000, 30000, 4000, 400000, 15000, 100000, 5000, 18)),
-    ("bike", "bike", "Bike", "Beat the traffic. Helmet provided", 1, None, 1, (20000, 8000, 1000, 50000, 5000, 20000, 1500, 12)),
+    ("bike", "bike", "Bike", "Fast package delivery across town", 1, None, 1, (20000, 8000, 1000, 50000, 5000, 20000, 1500, 12)),
 ]
 
 # Every account/vehicle this command creates, so --reset can remove exactly these.
@@ -191,7 +191,7 @@ class Command(BaseCommand):
             vehicle, _ = Vehicle.objects.update_or_create(plate_number=plate, defaults=dict(
                 provider=profile, kind=service, make=make, model=model, year=year, color=colour,
                 seats=1 if service == "bike" else (6 if model == "Sienna" else 4),
-                has_rider_helmet=service == "bike", has_passenger_helmet=service == "bike", has_reflective_vest=service == "bike",
+                has_rider_helmet=service == "bike", has_delivery_box=service == "bike", has_reflective_vest=service == "bike",
                 status=VehicleStatus.APPROVED if approved else VehicleStatus.PENDING, is_active=True))
             vehicle.ride_types.set([types[c] for c in codes])
             # Placeholder document files (paths only) so the review queue has something to show.

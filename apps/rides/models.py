@@ -1,13 +1,14 @@
 """
 Rides: the trip itself, its stops, dispatch offers, an event timeline and ratings.
 One `Ride` table for both services; `service` says car or bike.
+Cars carry passengers. Bikes are the dispatch service: they carry packages (see `package_*` and `recipient_*`).
 
 Status machine (enforced in apps/rides/services.py, never set `status` directly):
 
     scheduled ──(15 min before)──┐
                                  ▼
     searching ──accept──► accepted ──arrive──► arrived ──start──► in_progress ──complete──► completed
-        │                    │                   │   (bike: helmet check first)
+        │                    │                   │   (bike: package collected first)
         ├──► no_provider     └──────► cancelled ◄┘   (customer, provider, staff or no-show)
 
 What the apps poll:
@@ -21,6 +22,8 @@ from django.conf import settings
 from django.db import models
 
 from apps.core.models import BaseModel, Service
+
+from .delivery import PackageKind, PackageSize
 
 
 class RideStatus(models.TextChoices):
@@ -78,7 +81,7 @@ class Ride(BaseModel):
     pickup_lat = models.DecimalField(max_digits=9, decimal_places=6)
     pickup_lng = models.DecimalField(max_digits=9, decimal_places=6)
     pickup_address = models.CharField(max_length=255)
-    pickup_note = models.CharField(max_length=255, blank=True, help_text="Landmark note for the driver, e.g. 'Blue gate, opposite GTBank'.")
+    pickup_note = models.CharField(max_length=255, blank=True, help_text="Landmark note for the driver/rider, e.g. 'Blue gate, opposite GTBank'.")
     dropoff_lat = models.DecimalField(max_digits=9, decimal_places=6)
     dropoff_lng = models.DecimalField(max_digits=9, decimal_places=6)
     dropoff_address = models.CharField(max_length=255)
@@ -110,7 +113,16 @@ class Ride(BaseModel):
     cancelled_by = models.CharField(max_length=10, choices=CancelledBy.choices, blank=True)
     cancel_reason = models.CharField(max_length=255, blank=True)
 
-    # Bike safety (ignored for cars)
+    # Dispatch: the package and who receives it (bikes only; blank for cars)
+    package_kind = models.CharField(max_length=20, choices=PackageKind.choices, blank=True)
+    package_size = models.CharField(max_length=10, choices=PackageSize.choices, blank=True)
+    package_contents = models.CharField(max_length=120, blank=True, help_text="Optional: what exactly is inside.")
+    package_fragile = models.BooleanField(default=False)
+    recipient_name = models.CharField(max_length=80, blank=True)
+    recipient_phone = models.CharField(max_length=20, blank=True, help_text="E.164, e.g. +2348034125567.")
+    package_collected_at = models.DateTimeField(null=True, blank=True, help_text="Rider confirmed the package at pickup.")
+
+    # Old passenger-bike fields, kept for past trips. No longer used.
     helmet_handed_over_at = models.DateTimeField(null=True, blank=True)
     helmet_returned_at = models.DateTimeField(null=True, blank=True)
 
@@ -186,7 +198,7 @@ class Rating(BaseModel):
     ride = models.ForeignKey(Ride, on_delete=models.CASCADE, related_name="ratings")
     direction = models.CharField(max_length=24, choices=RatingDirection.choices)
     stars = models.PositiveSmallIntegerField()
-    tags = models.JSONField(default=list, blank=True, help_text='e.g. ["Smooth driving", "Clean helmet"]')
+    tags = models.JSONField(default=list, blank=True, help_text='e.g. ["Smooth driving", "Package arrived safe"]')
     comment = models.CharField(max_length=500, blank=True)
 
     class Meta(BaseModel.Meta):

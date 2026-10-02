@@ -93,14 +93,22 @@ class RideListCreateView(generics.ListAPIView):
         description=("**POST /api/v1/rides/** · Bearer (customer).\n\n"
                      "Creates the ride at the quoted price and starts finding a driver/rider (status `searching`), "
                      "or `scheduled` if `scheduled_for` is set. Then poll GET /rides/{id}/.\n\n"
+                     "Bike rides are package deliveries: send `package` (kind, size, recipient_name, recipient_phone). "
+                     "Without it: 400 `package_required`.\n\n"
                      "Errors: 404 `quote_not_found`; 409 `quote_expired`, `quote_used`, `active_ride_exists`; "
-                     "400 `card_required`; 402 `insufficient_wallet`."),
+                     "400 `card_required`, `package_required`, `invalid_phone`; 402 `insufficient_wallet`."),
         request=RideRequestSerializer,
         responses={201: RideSerializer, **errors(400, 401, 402, 403, 404, 409)},
         examples=[OpenApiExample("Cash car ride", request_only=True, value={
             "quote_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "payment_method": "cash",
             "pickup_address": "14 Admiralty Way, Lekki Phase 1", "dropoff_address": "Ikeja City Mall",
-            "pickup_note": "Blue gate, opposite GTBank"})],
+            "pickup_note": "Blue gate, opposite GTBank"}),
+                  OpenApiExample("Bike delivery", request_only=True, value={
+            "quote_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6", "payment_method": "cash",
+            "pickup_address": "14 Admiralty Way, Lekki Phase 1", "dropoff_address": "Ikeja City Mall",
+            "pickup_note": "Blue gate", "package": {"kind": "Documents", "size": "Small", "contents": "Signed contract",
+                                                    "fragile": False, "recipient_name": "Ngozi Okafor",
+                                                    "recipient_phone": "08034125567"}})],
     )
     def post(self, request):
         data = RideRequestSerializer(data=request.data)
@@ -114,7 +122,7 @@ class RideListCreateView(generics.ListAPIView):
         ride = services.request_ride(request.user, quote_id=v["quote_id"], payment_method=v["payment_method"], card=card,
                                      pickup_address=v["pickup_address"], dropoff_address=v["dropoff_address"],
                                      pickup_note=v.get("pickup_note", ""), stop_addresses=v.get("stop_addresses"),
-                                     scheduled_for=v.get("scheduled_for"))
+                                     scheduled_for=v.get("scheduled_for"), package=v.get("package"))
         return Response(RideSerializer(ride, context={"request": request}).data, status=status.HTTP_201_CREATED)
 
 

@@ -3,14 +3,17 @@ Ride request/response shapes.
 
 Customer apps get `RideSerializer` (driver/rider public info + live location).
 Provider apps get `ProviderTripSerializer` (customer first name, pickup note, cash to collect).
+Bike rides are deliveries: every shape carries `package` (what's sent + who receives it), null for cars.
 """
 from django.conf import settings
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from apps.core.geo import eta_seconds, haversine_km
 from apps.pricing.serializers import RideTypeSerializer
 from apps.providers.serializers import ProviderPublicSerializer, VehiclePublicSerializer
 
+from .delivery import PackageKind, PackageSize, package_payload
 from .models import PaymentMethodKind, Rating, Ride, RideEvent, RideOffer, RideStatus, RideStop
 
 
@@ -32,10 +35,30 @@ class EstimateRequestSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         if attrs["service"] == "bike" and attrs.get("stops"):
-            raise serializers.ValidationError({"stops": ["Bike rides can't have extra stops."]})
+            raise serializers.ValidationError({"stops": ["Bike deliveries go to one drop-off (no extra stops)."]})
         if len(attrs.get("stops") or []) > 3:
             raise serializers.ValidationError({"stops": ["Up to 3 stops."]})
         return attrs
+
+
+class PackageInputSerializer(serializers.Serializer):
+    """What a bike delivery carries and who receives it. Required for bike bookings."""
+    kind = serializers.ChoiceField(choices=PackageKind.choices)
+    size = serializers.ChoiceField(choices=PackageSize.choices)
+    contents = serializers.CharField(max_length=120, required=False, allow_blank=True, default="", help_text="Optional: what's inside.")
+    fragile = serializers.BooleanField(required=False, default=False)
+    recipient_name = serializers.CharField(max_length=80, min_length=2)
+    recipient_phone = serializers.CharField(max_length=20, help_text="Nigerian mobile, e.g. 0803 412 5567.")
+
+
+class PackageSerializer(serializers.Serializer):
+    kind = serializers.CharField()
+    size = serializers.CharField()
+    contents = serializers.CharField()
+    fragile = serializers.BooleanField()
+    recipient_name = serializers.CharField()
+    recipient_phone = serializers.CharField(help_text="E.164")
+    collected_at = serializers.DateTimeField(allow_null=True, help_text="When the rider confirmed the package at pickup.")
 
 
 class RideRequestSerializer(serializers.Serializer):
@@ -45,9 +68,11 @@ class RideRequestSerializer(serializers.Serializer):
     pickup_address = serializers.CharField(max_length=255)
     dropoff_address = serializers.CharField(max_length=255)
     pickup_note = serializers.CharField(max_length=255, required=False, allow_blank=True, default="",
-                                        help_text="Landmark for the driver, e.g. 'Blue gate, opposite GTBank'.")
+                                        help_text="Landmark for the driver/rider, e.g. 'Blue gate, opposite GTBank'.")
+    package = PackageInputSerializer(required=False, allow_null=True,
+                                     help_text="Bike deliveries: required (older apps may put it in `pickup_note` instead). Ignored for cars.")
     stop_addresses = serializers.ListField(child=serializers.CharField(max_length=255), required=False)
-    scheduled_for = serializers.DateTimeField(required=False, allow_null=True, help_text="Cars only. ISO 8601, 30 min to 7 days ahead.")
+    scheduled_for = serializers.DateTimeField(required=False, allow_null=True, help_text="ISO 8601, 30 min to 7 days ahead.")
 
     def validate_scheduled_for(self, value):
         from datetime import timedelta
@@ -80,7 +105,9 @@ class RideSerializer(serializers.ModelSerializer):
     eta_to_pickup_seconds = serializers.SerializerMethodField()
     is_active = serializers.BooleanField(read_only=True)
     cancellation_fee_if_cancelled_now = serializers.SerializerMethodField()
-    requires_helmet = serializers.SerializerMethodField(help_text="True for bike rides: show the helmet reminder.")
+    requires_helmet = serializers.SerializerMethodField(help_text="Deprecated: always false (bikes carry packages, not passengers).")
+    is_delivery = serializers.SerializerMethodField(help_text="True for bike rides (package delivery).")
+    package = serializers.SerializerMethodField(help_text="Bike deliveries: the package and recipient. Null for cars.")
     share_url = serializers.SerializerMethodField()
     my_rating = serializers.SerializerMethodField()
 
@@ -91,7 +118,7 @@ class RideSerializer(serializers.ModelSerializer):
                   "distance_m", "duration_s", "gross_amount", "discount_amount", "wait_charge_amount", "total_amount", "tip_amount",
                   "cancellation_fee_amount", "refunded_amount", "payment_method", "payment_status",
                   "provider", "vehicle", "provider_location", "eta_to_pickup_seconds", "requires_helmet",
-                  "cancellation_fee_if_cancelled_now", "share_url", "my_rating",
+                  "is_delivery", "package", "cancellation_fee_if_cancelled_now", "share_url", "my_rating",
                   "requested_at", "accepted_at", "arrived_at", "started_at", "completed_at", "cancelled_at", "cancelled_by", "cancel_reason"]
 
     def get_provider_location(self, obj) -> dict | None:
@@ -111,7 +138,14 @@ class RideSerializer(serializers.ModelSerializer):
         return cancellation_fee_if_cancelled_now(obj) if obj.is_active else 0
 
     def get_requires_helmet(self, obj) -> bool:
+        return False
+
+    def get_is_delivery(self, obj) -> bool:
         return obj.service == "bike"
+
+    @extend_schema_field(PackageSerializer(allow_null=True))
+    def get_package(self, obj):
+        return package_payload(obj)
 
     def get_share_url(self, obj) -> str:
         return f"{settings.SHARE_BASE_URL}{obj.share_token}"
@@ -185,13 +219,18 @@ class OfferSerializer(serializers.ModelSerializer):
     payment_method = serializers.CharField(source="ride.payment_method")
     stops_count = serializers.SerializerMethodField()
     customer = serializers.SerializerMethodField()
+    package = serializers.SerializerMethodField(help_text="Bike deliveries: what to collect and who receives it. Null for cars.")
 
     class Meta:
         model = RideOffer
         fields = ["id", "ride", "status", "is_manual", "expires_at", "seconds_left", "service", "ride_type_name",
                   "distance_to_pickup_m", "eta_to_pickup_s", "pickup_address", "pickup_note", "pickup_lat", "pickup_lng",
                   "dropoff_address", "trip_distance_m", "trip_duration_s", "estimated_fare_amount", "payment_method",
-                  "stops_count", "customer"]
+                  "stops_count", "customer", "package"]
+
+    @extend_schema_field(PackageSerializer(allow_null=True))
+    def get_package(self, obj):
+        return package_payload(obj.ride)
 
     def get_seconds_left(self, obj) -> int:
         from django.utils import timezone
@@ -210,7 +249,9 @@ class ProviderTripSerializer(serializers.ModelSerializer):
     stops = RideStopSerializer(many=True, read_only=True)
     customer = serializers.SerializerMethodField()
     cash_due_amount = serializers.IntegerField(read_only=True, help_text="Cash to collect (0 for card/wallet). Includes tip.")
-    helmet_required = serializers.SerializerMethodField()
+    helmet_required = serializers.SerializerMethodField(help_text="Deprecated: always false.")
+    is_delivery = serializers.SerializerMethodField()
+    package = serializers.SerializerMethodField(help_text="Bike deliveries: what to collect and who receives it. Null for cars.")
 
     class Meta:
         model = Ride
@@ -218,6 +259,7 @@ class ProviderTripSerializer(serializers.ModelSerializer):
                   "dropoff_lat", "dropoff_lng", "dropoff_address", "stops", "distance_m", "duration_s",
                   "gross_amount", "discount_amount", "wait_charge_amount", "total_amount", "tip_amount", "commission_amount",
                   "payment_method", "payment_status", "cash_due_amount", "cash_collected_at", "customer",
+                  "is_delivery", "package", "package_collected_at",
                   "helmet_required", "helmet_handed_over_at", "helmet_returned_at",
                   "accepted_at", "arrived_at", "started_at", "completed_at", "cancelled_at", "cancel_reason"]
 
@@ -225,7 +267,14 @@ class ProviderTripSerializer(serializers.ModelSerializer):
         return _customer_public(obj.customer)
 
     def get_helmet_required(self, obj) -> bool:
+        return False
+
+    def get_is_delivery(self, obj) -> bool:
         return obj.service == "bike"
+
+    @extend_schema_field(PackageSerializer(allow_null=True))
+    def get_package(self, obj):
+        return package_payload(obj)
 
 
 class RideEventSerializer(serializers.ModelSerializer):

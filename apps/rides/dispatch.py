@@ -77,7 +77,8 @@ def create_offer(ride: Ride, provider: ProviderProfile, km: float, manual: bool 
     ProviderProfile.objects.filter(pk=provider.pk).update(offers_received=F("offers_received") + 1)
     RideEvent.objects.create(ride=ride, event="offer_sent", data={"provider_id": str(provider.id), "km": round(km, 2), "manual": manual})
     from apps.support.services import notify
-    notify(provider.user, "New trip request", f"{ride.pickup_address} · {offer.eta_to_pickup_s // 60 + 1} min away",
+    title = "New delivery request" if ride.service == "bike" else "New trip request"
+    notify(provider.user, title, f"{ride.pickup_address} · {offer.eta_to_pickup_s // 60 + 1} min away",
            data={"type": "ride_offer", "offer_id": str(offer.id), "ride_id": str(ride.id)})
     return offer
 
@@ -149,7 +150,8 @@ def give_up_old_searches() -> int:
         ride.save(update_fields=["status", "needs_manual_dispatch", "updated_at"])
         RideEvent.objects.create(ride=ride, event="no_provider")
         from apps.support.services import notify
-        notify(ride.customer, "No drivers available", "We couldn't find anyone nearby. Please try again.",
+        notify(ride.customer, "No riders available" if ride.service == "bike" else "No drivers available",
+               "We couldn't find anyone nearby. Please try again.",
                data={"type": "ride_update", "ride_id": str(ride.id), "status": ride.status})
         count += 1
     return count

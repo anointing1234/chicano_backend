@@ -16,6 +16,7 @@
   var countEl = document.querySelector("[data-map-count]");
   var every = parseInt(el.getAttribute("data-every") || "10000", 10);
   var LAGOS = [6.52, 3.38];
+  var PHASE = { available: "#2E9E5B", pickup: "#E7770B", trip: "#16130F" };
   var map = null, layer = null, fitted = false;
 
   function esc(s) { return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; }); }
@@ -29,7 +30,7 @@
 
   function driverHtml(d) {
     return '<h3>' + esc(d.name) + '</h3><p class="small muted">' + esc(d.kind) + ' · ' + esc(d.vehicle || "no vehicle") + '</p>' +
-      '<p class="small">' + (d.on_trip ? '<span class="badge badge-info">On a trip</span>' : '<span class="badge badge-good">Available</span>') +
+      '<p class="small">' + (d.phase === "pickup" ? '<span class="badge badge-warn">To pickup</span>' : d.on_trip ? '<span class="badge badge-dark">On trip</span>' : '<span class="badge badge-good">Available</span>') +
       ' <span class="muted">GPS ' + esc(d.updated) + '</span></p><a class="btn btn-secondary btn-sm" href="' + esc(d.url) + '">Open profile</a>';
   }
   function rideHtml(r) {
@@ -75,7 +76,7 @@
   function drawLeaflet(data) {
     if (!map) {
       el.innerHTML = "";
-      map = L.map(el, { zoomControl: true, attributionControl: true }).setView(LAGOS, 11);
+      map = L.map(el, { zoomControl: !el.hasAttribute("data-no-zoom"), attributionControl: true, scrollWheelZoom: el.hasAttribute("data-scroll-zoom") }).setView(LAGOS, 11);
       addTiles(map);
       layer = L.layerGroup().addTo(map);
       new ResizeObserver(function () { map.invalidateSize(); }).observe(el);
@@ -83,13 +84,16 @@
     layer.clearLayers();
     var bounds = [];
     data.drivers.forEach(function (d) {
-      var color = d.on_trip ? "#111111" : (d.service === "car" ? "#1F5FA8" : "#E7770B");
-      L.circleMarker([d.lat, d.lng], { radius: 7, color: "#fff", weight: 2, fillColor: color, fillOpacity: 1 })
+      // Board markers: a small vehicle pill (cars wide, bikes tall), green available · orange to pickup · ink on trip.
+      var color = PHASE[d.phase || (d.on_trip ? "trip" : "available")];
+      var bike = d.service === "bike";
+      L.marker([d.lat, d.lng], { icon: L.divIcon({ className: "", iconSize: bike ? [12, 20] : [22, 12], iconAnchor: bike ? [6, 10] : [11, 6],
+          html: '<span class="vmark' + (bike ? " bike" : "") + '" style="background:' + color + '"></span>' }) })
         .bindTooltip(esc(d.name)).on("click", function () { showPanel(driverHtml(d)); }).addTo(layer);
       bounds.push([d.lat, d.lng]);
     });
     data.rides.forEach(function (r) {
-      L.marker([r.lat, r.lng], { icon: L.divIcon({ className: "", html: '<span class="pin pin-ride" style="position:static;display:block;transform:none"></span>', iconSize: [12, 12] }) })
+      L.marker([r.lat, r.lng], { icon: L.divIcon({ className: "", html: '<span class="pin pin-ride" style="position:static;display:block;transform:none"></span>', iconSize: [18, 18], iconAnchor: [9, 9] }) })
         .bindTooltip("Waiting: " + esc(r.pickup)).on("click", function () { showPanel(rideHtml(r)); }).addTo(layer);
       bounds.push([r.lat, r.lng]);
     });
@@ -107,7 +111,8 @@
     function pos(lat, lng) { return "left:" + ((lng - minLng) / (maxLng - minLng) * 100).toFixed(2) + "%;top:" + ((1 - (lat - minLat) / (maxLat - minLat)) * 100).toFixed(2) + "%"; }
     var html = '<div class="map-fallback" role="img" aria-label="Positions of online drivers and riders (street map unavailable offline)">';
     data.drivers.forEach(function (d, i) {
-      html += '<button type="button" class="pin ' + (d.on_trip ? "pin-busy" : "pin-" + d.service) + '" style="' + pos(d.lat, d.lng) + '" data-d="' + i + '" aria-label="' + esc(d.name) + '"></button>';
+      var cls = (d.phase === "trip" || (!d.phase && d.on_trip)) ? "pin-busy" : (d.phase === "pickup" ? "pin-pickup" : "pin-car");
+      html += '<button type="button" class="pin ' + cls + (d.service === "bike" ? " pin-bike" : "") + '" style="' + pos(d.lat, d.lng) + '" data-d="' + i + '" aria-label="' + esc(d.name) + '"></button>';
     });
     data.rides.forEach(function (r, i) {
       html += '<button type="button" class="pin pin-ride" style="' + pos(r.lat, r.lng) + '" data-r="' + i + '" aria-label="Waiting ride at ' + esc(r.pickup) + '"></button>';

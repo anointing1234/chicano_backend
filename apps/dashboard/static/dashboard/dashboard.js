@@ -23,7 +23,7 @@
   var root = document.documentElement;
   var phone = window.matchMedia("(max-width: 768px)");
   var SVG = {
-    chev: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6l6-6"/></svg>',
+    chev: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>',
     check: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5l9-10"/></svg>',
     x: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>',
     search: '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M11 18a7 7 0 1 0 0-14a7 7 0 0 0 0 14zM21 21l-5-5"/></svg>',
@@ -82,11 +82,26 @@
     if (root.classList.contains("nav-open") && e.target.closest(".sidebar a")) setDrawer(false);
   });
 
-  // "/" jumps to the global search (like most admin tools)
+  // Ctrl K / ⌘K (or "/") jumps to the global search
   document.addEventListener("keydown", function (e) {
-    if (e.key !== "/" || e.ctrlKey || e.metaKey || e.altKey || typing(document.activeElement)) return;
+    var ctrlK = (e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K");
+    var slash = e.key === "/" && !e.ctrlKey && !e.metaKey && !e.altKey && !typing(document.activeElement);
+    if (!ctrlK && !slash) return;
     var s = document.getElementById("global-search");
-    if (s && s.offsetParent) { e.preventDefault(); s.focus(); s.select(); }
+    if (!s || !s.offsetParent) {
+      var ms = document.getElementById("mobile-search");
+      if (ms) { ms.classList.add("open"); s = document.getElementById("m-search"); }
+    }
+    if (s) { e.preventDefault(); s.focus(); s.select(); }
+  });
+  // phone header search toggle
+  document.addEventListener("click", function (e) {
+    var b = e.target.closest("[data-mobile-search]");
+    if (!b) return;
+    var form = document.getElementById("mobile-search");
+    var open = form.classList.toggle("open");
+    b.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) document.getElementById("m-search").focus();
   });
 
   // thin progress bar while the next page loads
@@ -139,6 +154,8 @@
       t.setAttribute("aria-label", sel.getAttribute("aria-label"));
     }
     this.clearable = !!sel.closest("form.filters") && sel.options.length && sel.options[0].value === "" && !sel.required;
+    // In a filter bar the trigger reads like the design's filter chips: "Status: All".
+    this.prefix = sel.closest(".filters, .chip-filters") && !sel.hasAttribute("data-no-prefix") ? (this.labelText || "") : "";
     t.innerHTML = '<span class="select-value" id="' + this.valueId + '"></span>' +
       (this.clearable ? '<span class="select-clear" role="button" tabindex="-1" aria-label="Clear">' + SVG.x + "</span>" : "") +
       '<span class="select-chev">' + SVG.chev + "</span>";
@@ -177,7 +194,14 @@
     var o = this.sel.options[this.sel.selectedIndex];
     var v = this.trigger.querySelector(".select-value");
     var empty = !o || o.value === "";
-    v.textContent = o ? o.text : "";
+    var adder = this.prefix && this.wrap.closest(".f.add");
+    if (adder && empty) {
+      v.innerHTML = '<span class="select-prefix">+ ' + esc(this.prefix) + "</span>";
+    } else if (this.prefix) {
+      v.innerHTML = '<span class="select-prefix">' + esc(this.prefix) + ":</span> <b>" + esc(empty ? "All" : (o ? o.text : "")) + "</b>";
+    } else {
+      v.textContent = o ? o.text : "";
+    }
     v.classList.toggle("is-placeholder", empty);
     this.wrap.classList.toggle("has-value", !empty);
     var c = this.trigger.querySelector(".select-clear");

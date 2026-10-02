@@ -1,127 +1,115 @@
 {% load static dashboard_tags %}<!doctype html>
 {% comment %}
-  App shell for every signed-in page.
-    · Sidebar (navy): grouped, collapsible sections for this staff role; icon-only mode on desktop;
-      off-canvas drawer below 1024px (menu button in the header).
-    · Header: page title + breadcrumbs, panel badge, global search, notifications, panel switcher, profile.
-    · Content: {% block content %}. Pages set {% block title %}, {% block crumbs %} and optionally `panel`.
-  Panel colour: <body data-panel> — customer = orange, driver = gold, platform/admin = orange on navy.
+  App shell for every signed-in page (Super Admin boards A01–A10).
+    · Sidebar (ink): People · Operations · Money & growth · Admin, with live counts. Icon rail on tablets,
+      off-canvas drawer on phones (opened from "More" in the bottom bar).
+    · Top bar: search (Ctrl K / "/"), All · Cars · Bikes switch, city, notifications.
+    · Phone: dark header + bottom bar (Today · Trips · Dispatch · Support · More).
+    · Content: {% block content %}. Pages set {% block title %}, optionally {% block crumbs %} (<li> items),
+      {% block body_class %} (e.g. "has-drawer", "dispatch-page", "doc-page") and {% block drawer %}.
 {% endcomment %}
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <title>{% block title %}{{ page_label }}{% endblock %} · Chicano Cruise Admin</title>
+  <title>{% block title %}{{ page_label }}{% endblock %} · Chicano Cruise Super Admin</title>
   <link rel="icon" href="{% static 'dashboard/favicon.svg' %}" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Poppins:wght@600&display=swap">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Figtree:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
   {% block head %}{% endblock %}
-  <link rel="stylesheet" href="{% static 'dashboard/dashboard.css' %}?v=3">
-  {# Apply the remembered compact sidebar before paint (no flicker). #}
-  <script>try{if(localStorage.getItem("cc-sidebar-compact")==="1")document.documentElement.classList.add("sidebar-compact")}catch(e){}</script>
+  <link rel="stylesheet" href="{% static 'dashboard/dashboard.css' %}?v=4">
 </head>
-<body data-panel="{% block panel %}{{ panel }}{% endblock %}">
+<body class="{% block body_class %}{% endblock %}">
 <a class="skip-link" href="#main">Skip to content</a>
 <div class="shell">
   <aside class="sidebar" id="sidebar" aria-label="Main navigation">
-    <div class="sidebar-head">
-      <a class="brand" href="{% url 'dashboard:overview' %}">
-        <img src="{% static 'dashboard/favicon.svg' %}" width="32" height="32" alt="">
-        <span class="brand-text"><span class="brand-name">Chicano Cruise</span><span class="brand-sub">Admin</span></span>
-      </a>
-      <button class="collapse-btn desktop-only" type="button" data-collapse aria-controls="sidebar" aria-expanded="true" title="Collapse menu">
-        {% icon "collapse" %}<span class="sr-only">Collapse or expand the menu</span>
-      </button>
-    </div>
+    <a class="brand" href="{% url 'dashboard:overview' %}" aria-label="Chicano Cruise · Overview">
+      <svg class="brand-mark" width="34" height="34" viewBox="0 0 48 48" aria-hidden="true"><path d="M40 12A20 20 0 1 0 40 36" fill="none" stroke="#E7770B" stroke-width="7" stroke-linecap="round"/><path d="M20 16 L38 13 L38 35 L20 32 Z" fill="#FFFFFF"/><path d="M24 24 H36" stroke="#100E0B" stroke-width="2" stroke-dasharray="3 2.5"/></svg>
+      <span class="brand-text"><span class="brand-name">CHIC<span>A</span>NO</span><span class="brand-sub">CRUISE</span></span>
+    </a>
+    <div class="role-pill">{% icon "shield" 18 %}<span class="role-name">Super Admin</span><span class="role-scope">{% if service == "all" %}Cars +<br>Bikes{% else %}{{ service_scope }}{% endif %}</span></div>
     <nav>
       {% for group in nav_groups %}
-        <details class="nav-group" data-group="{{ group.key }}" open>
-          <summary><i class="dot" aria-hidden="true"></i><span>{{ group.title }}</span><i class="chev" aria-hidden="true">{% icon "chev" 14 %}</i></summary>
-          {% for item in group.items %}
-            <a class="nav-item{% if item.active %} active{% endif %}" href="{{ item.url }}"{% if item.active %} aria-current="page"{% endif %} title="{{ item.label }}">
-              {% icon item.icon %}<span class="nav-label">{{ item.label }}</span>
-              {% if item.name == "dashboard:support" and open_sos_count %}<span class="nav-count" aria-label="{{ open_sos_count }} open SOS">{{ open_sos_count }}</span>{% endif %}
-            </a>
-          {% endfor %}
-        </details>
+        <div class="nav-section">{{ group.title }}</div>
+        {% for item in group.items %}
+          <a class="nav-item{% if item.active %} active{% endif %}" href="{{ item.url }}"{% if item.active %} aria-current="page"{% endif %} title="{{ item.label }}">
+            {% icon item.icon 18 %}<span class="nav-label">{{ item.label }}</span>
+            {% if item.count %}<span class="nav-count" aria-label="{{ item.count }} waiting">{{ item.count }}</span>{% endif %}
+          </a>
+        {% endfor %}
       {% endfor %}
     </nav>
     <div class="sidebar-foot">
-      <span class="avatar" aria-hidden="true">{{ request.user.full_name|initials }}</span>
+      <span class="avatar" aria-hidden="true">{{ request.user.full_name|default:request.user.email|initials }}</span>
       <div class="who">
         <div class="who-name">{{ request.user.full_name|default:request.user.email }}</div>
-        <div class="who-role">{{ request.user.staff_role|label }}</div>
+        <div class="who-role">{{ request.user.staff_role|label }} · {{ staff_scope }}</div>
       </div>
+      <details class="menu foot-menu" data-align="start">
+        <summary aria-label="Account menu">{% icon "more" 18 %}</summary>
+        <div class="menu-panel narrow" role="menu" aria-label="Account">
+          <div class="menu-user"><div style="min-width:0"><div class="cell-main">{{ request.user.full_name|default:request.user.email }}</div><div class="cell-sub">{{ request.user.email }}</div></div></div>
+          <div class="menu-sep"></div>
+          {% if can.users_view %}<a class="menu-item" role="menuitem" href="{% url 'dashboard:users' %}">{% icon "id" 16 %} All accounts</a>{% endif %}
+          {% if can.team %}<a class="menu-item" role="menuitem" href="{% url 'dashboard:staff' %}">{% icon "shield" 16 %} Staff &amp; roles</a>{% endif %}
+          {% if can.audit %}<a class="menu-item" role="menuitem" href="{% url 'dashboard:audit' %}">{% icon "list" 16 %} Audit log</a>{% endif %}
+          <form method="post" action="{% url 'dashboard:logout' %}">{% csrf_token %}
+            <button class="menu-item" role="menuitem" type="submit">{% icon "logout" 16 %} Sign out</button>
+          </form>
+        </div>
+      </details>
     </div>
   </aside>
-  <div class="scrim" aria-hidden="true"></div>
+  <div class="scrim" aria-hidden="true" data-menu></div>
 
   <div class="main">
+    {# phone header (A10) #}
+    <div class="mobile-head">
+      <svg width="30" height="30" viewBox="0 0 48 48" aria-hidden="true"><path d="M40 12A20 20 0 1 0 40 36" fill="none" stroke="#E7770B" stroke-width="7" stroke-linecap="round"/><path d="M20 16 L38 13 L38 35 L20 32 Z" fill="#FFFFFF"/><path d="M24 24 H36" stroke="#100E0B" stroke-width="2" stroke-dasharray="3 2.5"/></svg>
+      <div class="grow"><div class="t">Super Admin</div><div class="s"><span class="live-dot"></span>Live · {{ cities.0 }}</div></div>
+      <button class="icon-btn" type="button" aria-label="Search" aria-controls="mobile-search" aria-expanded="false" data-mobile-search>{% icon "search" 20 %}</button>
+      <a class="icon-btn" href="{% url 'dashboard:overview' %}#attention" aria-label="Notifications{% if alerts_total %}, {{ alerts_total }} waiting{% endif %}">{% icon "bell" 20 %}{% if alerts_total %}<span class="badge-count">{{ alerts_total }}</span>{% endif %}</a>
+    </div>
+    <form class="mobile-search" id="mobile-search" role="search" method="get" action="{% url 'dashboard:search' %}">
+      <label class="sr-only" for="m-search">Search users, riders, drivers, trips, plates</label>
+      <input id="m-search" type="search" name="q" autocomplete="off" placeholder="Search users, riders, drivers, trips">
+    </form>
+
     <header class="topbar">
-      <button class="icon-btn menu-btn" type="button" data-menu aria-controls="sidebar" aria-expanded="false">{% icon "menu" 22 %}<span class="sr-only">Open menu</span></button>
-      <div class="topbar-title">
-        <ol class="crumbs" aria-label="Breadcrumb">
-          <li><a href="{% url 'dashboard:overview' %}">Home</a></li>
-          {% block crumbs %}<li aria-current="page">{{ page_label }}</li>{% endblock %}
-        </ol>
-        <div class="topbar-page">{% block heading %}{{ page_label }}{% endblock %}</div>
-      </div>
-      <span class="panel-pill {{ panel|default:'platform' }}" title="You are in the {{ panel_label }} panel">{{ panel_label }}</span>
-
       <form class="topbar-search" role="search" method="get" action="{% url 'dashboard:search' %}">
-        {% icon "search" 16 %}
-        <label class="sr-only" for="global-search">Search customers, drivers, rides, tickets</label>
-        <input id="global-search" type="search" name="q" autocomplete="off" placeholder="Search people, plates, rides…" value="{% if request.resolver_match.url_name == 'search' %}{{ request.GET.q }}{% endif %}">
-        <span class="kbd" aria-hidden="true">/</span>
+        {% icon "search" 18 %}
+        <label class="sr-only" for="global-search">Search users, riders, drivers, trips, plates</label>
+        <input id="global-search" type="search" name="q" autocomplete="off" placeholder="Search users, riders, drivers, trips, plates"
+               value="{% if request.resolver_match.url_name == 'search' %}{{ request.GET.q }}{% endif %}">
+        <span class="kbd" aria-hidden="true">Ctrl K</span>
       </form>
-
-      <div class="topbar-actions">
-        <a class="icon-btn search-link" href="{% url 'dashboard:search' %}" title="Search">{% icon "search" 20 %}<span class="sr-only">Search</span></a>
-
-        <details class="menu" data-align="end">
-          <summary class="icon-btn" title="Notifications" aria-label="Notifications{% if alerts_total %}: {{ alerts_total }} waiting{% endif %}">
-            {% icon "bell" 20 %}{% if alerts_urgent %}<span class="dot" aria-hidden="true"></span>{% endif %}
-          </summary>
-          <div class="menu-panel" role="menu" aria-label="Waiting for you">
-            <div class="menu-head"><h3>Waiting for you</h3>{% if alerts_total %}<span class="chip">{{ alerts_total }} waiting</span>{% endif %}</div>
-            {% for a in alerts %}
-              <a class="menu-item" role="menuitem" href="{{ a.url }}">{% icon a.icon 16 %}<span>{{ a.label }}</span>
-                <span class="count{% if a.urgent %} neg{% endif %}">{{ a.count }}</span></a>
-            {% empty %}<div class="menu-empty">{% icon "check" 20 %}Nothing needs you right now.</div>{% endfor %}
-          </div>
-        </details>
-
-        <details class="menu" data-align="end">
-          <summary class="profile-btn" aria-label="Account menu">
-            <span class="avatar" aria-hidden="true">{{ request.user.full_name|initials }}</span>
-          </summary>
-          <div class="menu-panel" role="menu" aria-label="Account">
-            <div class="menu-user"><span class="avatar" aria-hidden="true">{{ request.user.full_name|initials }}</span>
-              <div style="min-width:0"><div class="cell-main">{{ request.user.full_name|default:request.user.email }}</div><div class="cell-sub">{{ request.user.email }}</div>
-              <div class="cell-sub">{{ request.user.staff_role|label }}</div></div></div>
-            {% if panels|length > 1 %}
-              <div class="menu-sep"></div>
-              <h3>Switch panel</h3>
-              {% for p in panels %}
-                <a class="menu-item" role="menuitem" href="{{ p.url }}"{% if p.key == panel %} aria-current="true"{% endif %}><span class="panel-pill {{ p.key }}">{{ p.label }}</span>{% if p.key == panel %}<span class="tick">{% icon "check" 16 %}</span>{% endif %}</a>
-              {% endfor %}
-            {% endif %}
-            <div class="menu-sep"></div>
-            <h3 id="svc-label">Business line</h3>
-            <div style="padding:2px 10px 8px">
-              <div class="segmented" role="group" aria-labelledby="svc-label" style="display:flex">
-                <a class="seg{% if service == 'all' %} active{% endif %}" style="flex:1" href="{% query service='all' page='' %}">All</a>
-                <a class="seg{% if service == 'car' %} active{% endif %}" style="flex:1" href="{% query service='car' page='' %}">Cars</a>
-                <a class="seg{% if service == 'bike' %} active{% endif %}" style="flex:1" href="{% query service='bike' page='' %}">Bikes</a>
-              </div>
-            </div>
-            <div class="menu-sep"></div>
-            <form method="post" action="{% url 'dashboard:logout' %}">{% csrf_token %}
-              <button class="menu-item" role="menuitem" type="submit">{% icon "logout" 16 %} Sign out</button>
-            </form>
-          </div>
-        </details>
+      <div class="topbar-spacer"></div>
+      <div class="svc-switch" role="group" aria-label="Service">
+        <a href="{% query service='all' page='' %}" aria-pressed="{% if service == 'all' %}true{% else %}false{% endif %}">All</a>
+        <a href="{% query service='car' page='' %}" aria-pressed="{% if service == 'car' %}true{% else %}false{% endif %}">{% icon "car" 15 %}Cars</a>
+        <a href="{% query service='bike' page='' %}" aria-pressed="{% if service == 'bike' %}true{% else %}false{% endif %}">{% icon "bike" 15 %}Bikes</a>
       </div>
+      <details class="menu city-btn" data-align="end">
+        <summary>{% icon "globe" 16 %}{{ cities.0 }}<span class="chev">{% icon "chev" 16 %}</span></summary>
+        <div class="menu-panel narrow" role="menu" aria-label="Service cities">
+          <h3>Service cities</h3>
+          {% for c in cities %}<div class="menu-item static">{% icon "globe" 16 %}{{ c }}{% if forloop.first %}<span class="tick">{% icon "check" 16 %}</span>{% endif %}</div>{% endfor %}
+          {% if can.settings_view %}<div class="menu-sep"></div><a class="menu-item" role="menuitem" href="{% url 'dashboard:settings' %}?tab=zones">{% icon "sliders" 16 %} Service zones</a>{% endif %}
+        </div>
+      </details>
+      <details class="menu" data-align="end">
+        <summary class="icon-btn" aria-label="Notifications{% if alerts_total %}, {{ alerts_total }} waiting{% endif %}">
+          {% icon "bell" 18 %}{% if alerts_total %}<span class="badge-count">{{ alerts_total }}</span>{% endif %}
+        </summary>
+        <div class="menu-panel" role="menu" aria-label="Waiting for you">
+          <div class="menu-head"><h3>Waiting for you</h3>{% if alerts_total %}<span class="badge badge-bad badge-count nodot">{{ alerts_total }}</span>{% endif %}</div>
+          {% for a in alerts %}{% if a.count %}
+            <a class="menu-item" role="menuitem" href="{{ a.url }}">{% icon a.icon 16 %}<span>{{ a.label }}</span>
+              <span class="count{% if a.urgent %} neg{% endif %}">{{ a.count }}</span></a>
+          {% endif %}{% endfor %}
+          {% if not alerts_total %}<div class="menu-empty">{% icon "check-circle" 22 %}Nothing needs you right now.</div>{% endif %}
+        </div>
+      </details>
     </header>
 
     {% if can.support %}
@@ -129,18 +117,28 @@
     {% endif %}
 
     <main class="content" id="main" tabindex="-1">
+      <ol class="crumbs" aria-label="Breadcrumb">{% block crumbs %}{% endblock %}</ol>
       {% block content %}{% endblock %}
     </main>
+    {% block drawer %}{% endblock %}
   </div>
+
+  {# phone bottom bar (A10) #}
+  <nav class="bottom-nav" aria-label="Main">
+    {% for b in bottom_nav %}
+      <a href="{{ b.url }}" class="{% if b.active %}active{% endif %}"{% if b.active %} aria-current="page"{% endif %}>{% icon b.icon 21 %}{{ b.label }}</a>
+    {% endfor %}
+    <button type="button" data-menu aria-controls="sidebar" aria-expanded="false">{% icon "more" 21 %}More</button>
+  </nav>
 </div>
 
 <div class="toasts" role="status" aria-live="polite">
   {% for message in messages %}
-    <div class="toast {{ message.tags }}">{% if message.tags == "success" %}{% icon "check" 18 %}{% elif message.tags == "error" %}{% icon "alert" 18 %}{% else %}{% icon "info" 18 %}{% endif %}
+    <div class="toast {{ message.tags }}">{% if message.tags == "success" %}{% icon "check-circle" 18 %}{% elif message.tags == "error" %}{% icon "alert" 18 %}{% else %}{% icon "info" 18 %}{% endif %}
       <span>{{ message }}</span><button class="toast-close" type="button" aria-label="Dismiss">{% icon "x" 14 %}</button></div>
   {% endfor %}
 </div>
-<script src="{% static 'dashboard/dashboard.js' %}"></script>
+<script src="{% static 'dashboard/dashboard.js' %}?v=4"></script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

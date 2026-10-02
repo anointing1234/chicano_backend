@@ -80,8 +80,8 @@ def set_online(profile: ProviderProfile, online: bool) -> ProviderProfile:
         vehicle = profile.vehicles.filter(is_active=True, status=VehicleStatus.APPROVED).first()
         if not vehicle:
             raise Conflict("no_approved_vehicle", "Add a vehicle and wait for approval before going online.")
-        if profile.service == "bike" and not vehicle.has_passenger_helmet:
-            raise Conflict("helmet_required", "You need a passenger helmet to go online.")
+        if profile.service == "bike" and not vehicle.has_rider_helmet:
+            raise Conflict("helmet_required", "Riders need their own helmet to go online. Add it to your bike details.")
         expired = profile.documents.filter(status=DocumentStatus.APPROVED, expires_at__lt=timezone.localdate())
         expired_types = list(expired.values_list("doc_type", flat=True))   # read before the update below
         if expired_types:

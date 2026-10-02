@@ -39,8 +39,9 @@ def provider_list(request):
           .annotate(docs_pending=Count("documents", filter=Q(documents__status=DocumentStatus.PENDING), distinct=True),
                     docs_expiring=Exists(ProviderDocument.objects.filter(provider=OuterRef("pk"), status=DocumentStatus.APPROVED,
                                                                           expires_at__lte=soon))))
-    if service:
-        qs = qs.filter(service=service)
+    kind = g.get("kind") if g.get("kind") in ("car", "bike") else None   # sidebar: Riders · bikes / Drivers · cars
+    if kind or service:
+        qs = qs.filter(service=kind or service)
     if g.get("status"):
         qs = qs.filter(status=g["status"])
     if g.get("online") in ("yes", "no"):
@@ -57,7 +58,7 @@ def provider_list(request):
                        | Q(user__email__icontains=s) | Q(vehicles__plate_number__icontains=s.replace(" ", ""))).distinct()
     qs, sort = apply_sort(request, qs, SORTS, "-joined")
     return render(request, "dashboard/providers/list.html", {
-        "page": paginate(request, qs), "sort": sort, "f": g, "statuses": ProviderStatus.choices, "cities": metrics.cities()})
+        "page": paginate(request, qs), "sort": sort, "f": g, "kind": kind, "statuses": ProviderStatus.choices, "cities": metrics.cities()})
 
 
 @staff_area("providers.view")
@@ -139,6 +140,15 @@ def document_list(request):
     """Applications & documents: the review queue (oldest pending first) and application pipeline."""
     service = current_service(request)
     status, doc_type = request.GET.get("status", "pending"), request.GET.get("doc_type", "")
+    if status == "pending" and not request.GET.get("list"):
+        first = ProviderDocument.objects.filter(status=DocumentStatus.PENDING)
+        if request.GET.get("svc") in ("car", "bike"):
+            first = first.filter(provider__service=request.GET["svc"])
+        elif current_service(request):
+            first = first.filter(provider__service=current_service(request))
+        if request.GET.get("type"):
+            first = first.filter(doc_type=request.GET["type"])
+        return _review_board(request, first.select_related("provider__user").order_by("created_at").first())
     soon = timezone.localdate() + timedelta(days=30)
     qs = ProviderDocument.objects.select_related("provider__user", "reviewed_by")
     if status == "expiring":
@@ -161,20 +171,63 @@ def document_list(request):
 
 @staff_area("providers.approve")
 def document_review(request, pk):
-    """One document next to the driver's details, with approve / reject and 'next in queue'."""
+    """One document on the review board (A06)."""
     doc = get_object_or_404(ProviderDocument.objects.select_related("provider__user", "reviewed_by"), pk=pk)
-    p = doc.provider
-    queue = ProviderDocument.objects.filter(status=DocumentStatus.PENDING).order_by("created_at")
-    next_doc = queue.filter(created_at__gt=doc.created_at).exclude(pk=doc.pk).first() or queue.exclude(pk=doc.pk).first()
-    ctype = mimetypes.guess_type(doc.file.name)[0] or ""
-    try:
-        missing = not doc.file or not doc.file.storage.exists(doc.file.name)
-    except Exception:          # storage unreachable: show the message instead of a broken image
-        missing = True
-    return render(request, "dashboard/documents/review.html", {
-        "doc": doc, "file_missing": missing, "p": p, "next_doc": next_doc, "pending_count": queue.count(), "is_pdf": ctype == "application/pdf",
-        "is_image": ctype.startswith("image/"), "others": p.documents.exclude(pk=doc.pk).order_by("doc_type"),
-        "vehicle": p.vehicles.filter(is_active=True).first(), "checklist": onboarding_checklist(p), "panel": "driver"})
+    return _review_board(request, doc)
+
+
+def _age(dt) -> str:
+    mins = int((timezone.now() - dt).total_seconds() // 60)
+    return f"{mins} m" if mins < 60 else (f"{mins // 60} h" if mins < 1440 else f"{mins // 1440} d")
+
+
+def _review_board(request, doc):
+    """
+    Review board (A06): the pending queue on the left (Service / Type filters), the file in the middle
+    (zoom, rotate), checks + expiry date + reject reasons + Reject / Approve on the right.
+    """
+    service = request.GET.get("svc") if request.GET.get("svc") in ("car", "bike") else (current_service(request) or "")
+    doc_type = request.GET.get("type", "")
+    queue = ProviderDocument.objects.filter(status=DocumentStatus.PENDING).select_related("provider__user").order_by("created_at")
+    if service:
+        queue = queue.filter(provider__service=service)
+    if doc_type:
+        queue = queue.filter(doc_type=doc_type)
+    total = queue.count()
+    items = list(queue[:40])
+    for q in items:
+        q.age = _age(q.created_at)
+    ctx = {"queue": items, "queue_total": total, "svc": service, "type": doc_type, "doc_types": DocumentType.choices,
+           "panel": "driver", "doc": doc}
+    if doc:
+        p = doc.provider
+        ids = [q.pk for q in items]
+        nxt = items[ids.index(doc.pk) + 1] if doc.pk in ids and ids.index(doc.pk) + 1 < len(ids) else next((q for q in items if q.pk != doc.pk), None)
+        ctype = mimetypes.guess_type(doc.file.name)[0] or "" if doc.file else ""
+        size = None
+        try:
+            missing = not doc.file or not doc.file.storage.exists(doc.file.name)
+            if not missing:
+                size = doc.file.size
+        except Exception:          # storage unreachable: show the message instead of a broken image
+            missing = True
+        vehicle = p.vehicles.filter(is_active=True).first()
+        reupload = p.documents.filter(doc_type=doc.doc_type).exclude(pk=doc.pk).filter(status__in=[DocumentStatus.EXPIRED, DocumentStatus.REJECTED]).first()
+        today = timezone.localdate()
+        checks = [("ok", "Name on profile", (p.user.full_name or "—").upper()),
+                  ("ok" if doc.number else "warn", "Document number", doc.number or "Not entered by the uploader")]
+        if vehicle and doc.doc_type in (DocumentType.INSURANCE, DocumentType.VEHICLE_REGISTRATION):
+            checks.append(("ok", "Plate on vehicle", vehicle.plate_number))
+        if not doc.expires_at:
+            checks.append(("warn", "Expiry date missing", "Enter it from the image before approving"))
+        elif doc.expires_at < today:
+            checks.append(("bad", "Expired", f"Expired {doc.expires_at:%d %b %Y}. Reject and ask for a new one."))
+        else:
+            checks.append(("ok", "Valid until", doc.expires_at.strftime("%d %b %Y")))
+        ctx.update(p=p, next_doc=nxt, is_pdf=ctype == "application/pdf", is_image=ctype.startswith("image/"), file_missing=missing,
+                   size=size, vehicle=vehicle, reupload=reupload, checks=checks,
+                   reasons=["Blurry photo", "Expired", "Name mismatch", "Wrong document", "Cropped"])
+    return render(request, "dashboard/documents/review.html", ctx)
 
 
 @require_POST
@@ -184,6 +237,22 @@ def document_action(request, pk, action):
         raise Http404("Unknown action")
     doc = get_object_or_404(ProviderDocument.objects.select_related("provider__user"), pk=pk)
     if action == "approve":
+        # The reviewer may type the expiry date read from the image (A06 "Expiry date").
+        raw = (request.POST.get("expires_at") or "").strip()
+        if raw:
+            from datetime import datetime
+            parsed = None
+            for fmt in ("%Y-%m-%d", "%d/%m/%Y", "%d / %m / %Y", "%d-%m-%Y"):
+                try:
+                    parsed = datetime.strptime(raw, fmt).date()
+                    break
+                except ValueError:
+                    continue
+            if not parsed:
+                messages.error(request, "Enter the expiry date as DD/MM/YYYY.")
+                return back(request, "dashboard:documents")
+            doc.expires_at = parsed
+            doc.save(update_fields=["expires_at", "updated_at"])
         run_action(request, lambda: services.approve_document(request, doc), f"{doc.get_doc_type_display()} approved.")
     else:
         form = ReasonForm(request.POST)
@@ -219,3 +288,19 @@ def document_file(request, pk):
     response["X-Content-Type-Options"] = "nosniff"
     response["Cache-Control"] = "private, no-store"
     return response
+
+
+@require_POST
+@staff_area("providers.approve")
+def document_remind(request, pk):
+    """'Remind' on Expiring documents (A05): push + inbox message to the driver/rider, logged in the audit trail."""
+    from apps.core.audit import log_action
+    from apps.support.services import notify
+    doc = get_object_or_404(ProviderDocument.objects.select_related("provider__user"), pk=pk)
+    days = (doc.expires_at - timezone.localdate()).days if doc.expires_at else None
+    when = "today" if days == 0 else (f"in {days} day{'s' if days != 1 else ''}" if days and days > 0 else "soon")
+    notify(doc.provider.user, "Document expiring", f"Your {doc.get_doc_type_display().split(' (')[0].lower()} expires {when}. Upload a new one to keep "
+           f"{'riding' if doc.provider.service == 'bike' else 'driving'}.", data={"type": "provider_document", "doc_type": doc.doc_type})
+    log_action(request, "document.remind", doc, {"expires_at": str(doc.expires_at)})
+    messages.success(request, f"Reminder sent to {doc.provider.user.full_name}.")
+    return back(request, "dashboard:driver_dashboard")

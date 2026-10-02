@@ -98,11 +98,13 @@ class VehicleView(APIView):
     @extend_schema(tags=["Provider"], summary="Add my car or bike",
                    description=("**POST /api/v1/provider/vehicles/** · Bearer (driver/rider).\n\n"
                                 "The new vehicle becomes the active one (status `pending` until staff inspect it). "
-                                "Riders must set the helmet flags; `has_passenger_helmet` is required to go online."),
+                                "Riders (dispatch bikes) set their kit flags; `has_rider_helmet` is required to go online. "
+                                "`has_delivery_box` and `has_reflective_vest` are shown to staff at inspection. "
+                                "`has_passenger_helmet` is no longer used."),
                    request=VehicleSerializer, responses={201: VehicleSerializer, **errors(400, 401, 403)},
                    examples=[OpenApiExample("Bike", request_only=True, value={"make": "Bajaj", "model": "Boxer", "year": 2021, "color": "Red",
                                                                               "plate_number": "EKY 214 QA", "seats": 1, "has_rider_helmet": True,
-                                                                              "has_passenger_helmet": True})])
+                                                                              "has_delivery_box": True, "has_reflective_vest": True})])
     def post(self, request):
         serializer = VehicleSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -144,7 +146,7 @@ class StatusView(APIView):
 
     @extend_schema(tags=["Provider"], summary="Go online / offline",
                    description=("**POST /api/v1/provider/status/** · Bearer (driver/rider).\n\n"
-                                "Errors: 403 `provider_not_approved`; 409 `no_approved_vehicle`, `helmet_required` (riders), "
+                                "Errors: 403 `provider_not_approved`; 409 `no_approved_vehicle`, `helmet_required` (riders without their own helmet), "
                                 "`document_expired`, `active_ride` (can't go offline mid-trip). "
                                 "After going online, start sending POST /provider/location/ and polling GET /provider/offers/current/."),
                    request=StatusSerializer, responses={200: ProviderProfileSerializer, **errors(400, 401, 403, 409)})

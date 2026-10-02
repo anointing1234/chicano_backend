@@ -1,60 +1,121 @@
 {% extends "dashboard/base.html" %}
-{# Document review: the file (served privately via document_file) next to the driver's details. #}
+{# A06 Document review: queue (left) · file viewer with zoom/rotate (middle) · checks, expiry date, reasons, Reject / Approve (right). #}
+{# Shortcuts: A approve · R reject · J next. The file is streamed privately by document_file (every view is audited). #}
 {% load dashboard_tags %}
-{% block title %}Review {{ doc.get_doc_type_display }}{% endblock %}
-{% block panel %}driver{% endblock %}
-{% block crumbs %}<li><a href="{% url 'dashboard:documents' %}">Applications &amp; documents</a></li><li aria-current="page">{{ doc.get_doc_type_display }}</li>{% endblock %}
-{% block heading %}Review document{% endblock %}
+{% block title %}{% if doc %}Review {{ doc.get_doc_type_display }}{% else %}Review queue{% endif %}{% endblock %}
+{% block body_class %}doc-page{% endblock %}
 {% block content %}
-<div class="page-header">
-  <div><h1>{{ doc.get_doc_type_display }}</h1><p>{{ p.user.full_name }} · {{ p.kind }} · uploaded {{ doc.created_at|date:"j M Y, H:i" }} · {{ pending_count }} waiting in the queue</p></div>
-  <div class="page-actions">
-    {% if doc.status == "pending" and can.providers_approve %}
-      <button class="btn btn-danger" type="button" data-dialog="reject-doc">Reject</button>
-      <form method="post" action="{% url 'dashboard:document_action' doc.pk 'approve' %}">{% csrf_token %}
-        <input type="hidden" name="next" value="{% if next_doc %}{% url 'dashboard:document_review' next_doc.pk %}{% else %}{% url 'dashboard:documents' %}{% endif %}">
-        <button class="btn btn-primary" type="submit">{% icon "check" 16 %} Approve{% if next_doc %} &amp; next{% endif %}</button></form>
-    {% else %}{% badge doc.status %}{% endif %}
-    {% if next_doc %}<a class="btn btn-ghost" href="{% url 'dashboard:document_review' next_doc.pk %}">Skip {% icon "arrow" 16 %}</a>{% endif %}
-  </div>
-</div>
-
 <div class="doc-review">
-  <section>
-    <div class="doc-preview">
-      {% if file_missing %}<div class="empty"><div class="empty-title">File not found in storage</div><p>The upload record exists but the file is missing. Ask the driver or rider to upload it again, or check MEDIA_ROOT / your storage bucket.</p></div>
-      {% elif is_image %}<img src="{% url 'dashboard:document_file' doc.pk %}" alt="{{ doc.get_doc_type_display }}, front, uploaded by {{ p.user.full_name }}">
-      {% elif is_pdf %}<iframe src="{% url 'dashboard:document_file' doc.pk %}" title="{{ doc.get_doc_type_display }} (PDF)"></iframe>
-      {% else %}<div class="empty"><div class="empty-title">Preview not available</div><p>Open the file in a new tab to check it.</p></div>{% endif %}
+  {# ---- queue #}
+  <section class="doc-queue" aria-labelledby="q-h">
+    <div class="qh"><h1 id="q-h">Review queue</h1><span class="badge badge-dark nodot">{{ queue_total }}</span></div>
+    <form class="filters" method="get" data-autosubmit aria-label="Filter the queue">
+      <div class="f"><label for="svc">Service</label><select id="svc" name="svc"><option value="">All</option>
+        <option value="car"{% if svc == "car" %} selected{% endif %}>Cars</option><option value="bike"{% if svc == "bike" %} selected{% endif %}>Bikes</option></select></div>
+      <div class="f"><label for="type">Type</label><select id="type" name="type"><option value="">All</option>
+        {% for k, t in doc_types %}<option value="{{ k }}"{% if type == k %} selected{% endif %}>{{ t|cut:" (cars)"|cut:" (bikes)"|cut:", class A" }}</option>{% endfor %}</select></div>
+    </form>
+    {% for q in queue %}
+      <a class="qcard{% if doc and q.pk == doc.pk %} selected{% endif %}" href="{% url 'dashboard:document_review' q.pk %}{% if request.GET %}?{{ request.GET.urlencode }}{% endif %}"{% if doc and q.pk == doc.pk %} aria-current="true"{% endif %}>
+        <span class="avatar md">{{ q.provider.user.full_name|initials }}</span>
+        <div class="grow"><div class="t">{{ q.provider.user.full_name }} · {% if q.provider.service == "bike" %}bike{% else %}car{% endif %}</div><div class="s">{{ q.get_doc_type_display|cut:" (cars)"|cut:" (bikes)"|cut:", class A" }}</div></div>
+        <span class="badge badge-amber nodot sm">{{ q.age }}</span>
+      </a>
+    {% empty %}
+      <div class="card">{% include "dashboard/partials/empty.html" with title="All documents reviewed" text="New uploads appear here automatically." icon="check-circle" tone="good" %}</div>
+    {% endfor %}
+    <a class="small" href="?status=all&list=1">All documents and history</a>
+  </section>
+
+  {% if doc %}
+  {# ---- viewer #}
+  <section class="doc-main" aria-labelledby="doc-h">
+    <div class="doc-title">
+      <span class="avatar lg">{{ p.user.full_name|initials }}</span>
+      <div class="grow"><h1 id="doc-h">{{ p.user.full_name }} · {{ doc.get_doc_type_display|cut:" (cars)"|cut:" (bikes)"|cut:", class A" }}</h1>
+        <p><span class="mono">{% if p.service == "bike" %}RDR{% else %}DRV{% endif %}-{{ p.pk|stringformat:"s"|slice:":5"|upper }}</span>{% if vehicle %} · {{ vehicle.make }} {{ vehicle.model }} · {{ vehicle.plate_number }}{% endif %}{% if reupload %} · re-upload after {{ reupload.get_status_display|lower }}{% endif %}{% if doc.status != "pending" %} · {{ doc.get_status_display|lower }}{% endif %}</p></div>
+      <a class="btn btn-secondary" href="{% url 'dashboard:provider_detail' p.pk %}">{% icon "id" 17 %}Open {% if p.service == "bike" %}rider{% else %}driver{% endif %}</a>
     </div>
-    {% if not file_missing %}
-    <p class="small" style="margin-top:10px"><a href="{% url 'dashboard:document_file' doc.pk %}" target="_blank" rel="noopener">Open front in new tab</a>
-      {% if doc.back_file %} · <a href="{% url 'dashboard:document_file' doc.pk %}?side=back" target="_blank" rel="noopener">Open back</a>{% endif %}
-      · Every view is recorded in the audit log.</p>
+    <div class="doc-preview" data-viewer>
+      <div class="tools">
+        <button class="icon-btn" type="button" aria-label="Zoom in" data-zoom="in">{% icon "plus" 18 %}</button>
+        <button class="icon-btn" type="button" aria-label="Zoom out" data-zoom="out">{% icon "minus" 18 %}</button>
+        <button class="icon-btn" type="button" aria-label="Rotate" data-rotate>{% icon "refresh" 18 %}</button>
+      </div>
+      <div class="meta"><span class="badge nodot">Uploaded {{ doc.created_at|date:"j M" }}{% if size %} · {{ size|filesizeformat }}{% endif %}</span></div>
+      {% if file_missing %}<div class="empty"><div class="empty-title">File not found in storage</div><p>The upload record exists but the file is missing. Ask them to upload it again.</p></div>
+      {% elif is_image %}<img src="{% url 'dashboard:document_file' doc.pk %}" alt="{{ doc.get_doc_type_display }}, uploaded by {{ p.user.full_name }}" data-doc-img>
+      {% elif is_pdf %}<iframe src="{% url 'dashboard:document_file' doc.pk %}" title="{{ doc.get_doc_type_display }} (PDF)"></iframe>
+      {% else %}<div class="empty"><div class="empty-title">Preview not available</div><p><a href="{% url 'dashboard:document_file' doc.pk %}" target="_blank" rel="noopener" style="color:#fff">Open the file in a new tab</a></p></div>{% endif %}
+    </div>
+    {% if doc.back_file %}<p class="small" style="margin:0"><a href="{% url 'dashboard:document_file' doc.pk %}?side=back" target="_blank" rel="noopener">Open the back side</a></p>{% endif %}
+  </section>
+
+  {# ---- decision #}
+  <section class="doc-side" aria-label="Decision">
+    <div class="card tight">
+      <div class="card-head"><div><h2>Checks</h2></div></div>
+      <div>
+        {% for tone, title, sub in checks %}
+          <div class="check-row"><span class="{{ tone }}">{% if tone == "ok" %}{% icon "check-circle" 18 %}{% elif tone == "warn" %}{% icon "info" 18 %}{% else %}{% icon "alert" 18 %}{% endif %}</span>
+            <div class="grow"><div class="t">{{ title }}</div><div class="s">{{ sub }}</div></div></div>
+        {% endfor %}
+      </div>
+    </div>
+    {% if doc.status == "pending" and can.providers_approve %}
+      <form id="approve-form" method="post" action="{% url 'dashboard:document_action' doc.pk 'approve' %}">{% csrf_token %}
+        <input type="hidden" name="next" value="{% if next_doc %}{% url 'dashboard:document_review' next_doc.pk %}{% else %}{% url 'dashboard:documents' %}{% endif %}{% if request.GET %}?{{ request.GET.urlencode }}{% endif %}">
+        <div class="field" style="margin:0"><label for="expires-at">Expiry date</label>
+          <input id="expires-at" class="mono-input" type="text" name="expires_at" inputmode="numeric" placeholder="DD / MM / YYYY" value="{{ doc.expires_at|date:'d/m/Y' }}"{% if not doc.expires_at %} autofocus{% endif %}></div>
+      </form>
+      <form id="reject-form" method="post" action="{% url 'dashboard:document_action' doc.pk 'reject' %}">{% csrf_token %}
+        <input type="hidden" name="next" value="{% if next_doc %}{% url 'dashboard:document_review' next_doc.pk %}{% else %}{% url 'dashboard:documents' %}{% endif %}{% if request.GET %}?{{ request.GET.urlencode }}{% endif %}">
+        <div class="field" style="margin:0"><label for="reject-reason">If rejecting, tell the {% if p.service == "bike" %}rider{% else %}driver{% endif %} why</label>
+          <div class="chips" style="margin-bottom:8px">{% for r in reasons %}<button class="tagbtn" type="button" data-reason="{{ r }}" aria-pressed="false">{{ r }}</button>{% endfor %}</div>
+          <input id="reject-reason" type="text" name="reason" maxlength="255" placeholder="e.g. Photo is blurry, retake it in daylight" style="height:44px;font-size:14px"></div>
+      </form>
+      <div class="decide">
+        <button class="btn btn-secondary" type="submit" form="reject-form" data-reject>Reject</button>
+        <button class="btn btn-success" type="submit" form="approve-form">{% icon "check" 18 %}Approve</button>
+      </div>
+      <div class="shortcuts">Shortcuts: A approve · R reject · J next</div>
+    {% else %}
+      <div class="card tight"><div class="row between"><span>Status</span>{% badge doc.status %}</div>
+        {% if doc.reviewed_by %}<div class="small muted">Reviewed by {{ doc.reviewed_by.full_name }}, {{ doc.reviewed_at|date:"j M Y, H:i" }}</div>{% endif %}
+        {% if doc.rejection_reason %}<div class="small">Reason: {{ doc.rejection_reason }}</div>{% endif %}</div>
     {% endif %}
   </section>
-  <div>
-    <section class="card">
-      <div class="card-head"><h2>Check against</h2><a class="btn btn-ghost btn-sm" href="{% url 'dashboard:provider_detail' p.pk %}">Full profile</a></div>
-      <dl class="kv">
-        <div><dt>Name on account</dt><dd><strong>{{ p.user.full_name }}</strong></dd></div>
-        <div><dt>Date of birth</dt><dd>{{ p.date_of_birth|date:"j M Y"|default:"—" }}</dd></div>
-        <div><dt>Document number</dt><dd class="mono">{{ doc.number|default:"—" }}</dd></div>
-        <div><dt>Expires</dt><dd>{{ doc.expires_at|date:"j M Y"|default:"—" }}</dd></div>
-        <div><dt>Service</dt><dd>{% service_tag p.service %} {{ p.kind|capfirst }}</dd></div>
-        {% if vehicle %}<div><dt>Vehicle</dt><dd>{{ vehicle.color }} {{ vehicle.make }} {{ vehicle.model }} ({{ vehicle.year }}) · <span class="mono">{{ vehicle.plate_number }}</span></dd></div>{% endif %}
-        {% if doc.reviewed_by %}<div><dt>Reviewed</dt><dd>{{ doc.reviewed_by.full_name }}, {{ doc.reviewed_at|date:"j M Y, H:i" }}</dd></div>{% endif %}
-        {% if doc.rejection_reason %}<div><dt>Rejection reason</dt><dd>{{ doc.rejection_reason }}</dd></div>{% endif %}
-      </dl>
-    </section>
-    <section class="card">
-      <div class="card-head"><h2>Other documents</h2></div>
-      {% for o in others %}<div class="list-row"><span>{{ o.get_doc_type_display }}</span>{% if o.status == "pending" %}<a href="{% url 'dashboard:document_review' o.pk %}">{% badge o.status "Review" %}</a>{% else %}{% badge o.status %}{% endif %}</div>
-      {% empty %}<p class="muted small">No other documents.</p>{% endfor %}
-    </section>
-  </div>
+  {% else %}
+  <section class="doc-main"><div class="card" style="flex:1;justify-content:center">{% include "dashboard/partials/empty.html" with title="All documents reviewed" text="New uploads appear here automatically." icon="check-circle" tone="good" %}</div></section>
+  {% endif %}
 </div>
-{% url 'dashboard:document_action' doc.pk 'reject' as reject_url %}
-{% if next_doc %}{% url 'dashboard:document_review' next_doc.pk as next_url %}{% else %}{% url 'dashboard:documents' as next_url %}{% endif %}
-{% include "dashboard/partials/reason_dialog.html" with id="reject-doc" action=reject_url next=next_url heading="Reject this document?" text="They'll see your reason in the app and can upload a new one." placeholder="e.g. Photo is blurry — retake it in daylight with all four corners visible" button="Reject document" danger=True %}
 {% endblock %}
+{% block scripts %}{% if doc %}
+<script>
+  (function () {
+    // viewer: zoom + rotate
+    var img = document.querySelector("[data-doc-img]"), z = 1, r = 0;
+    function apply() { if (img) img.style.transform = "scale(" + z + ") rotate(" + r + "deg)"; }
+    document.querySelectorAll("[data-zoom]").forEach(function (b) { b.addEventListener("click", function () { z = Math.min(3, Math.max(.5, z + (b.dataset.zoom === "in" ? .25 : -.25))); apply(); }); });
+    var rot = document.querySelector("[data-rotate]"); if (rot) rot.addEventListener("click", function () { r = (r + 90) % 360; apply(); });
+    // reason chips fill the reason box
+    var reason = document.getElementById("reject-reason");
+    document.querySelectorAll("[data-reason]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        document.querySelectorAll("[data-reason]").forEach(function (o) { o.setAttribute("aria-pressed", o === b ? "true" : "false"); });
+        reason.value = b.dataset.reason + (b.dataset.reason === "Blurry photo" ? ": retake it in daylight with all four corners visible." : ".");
+      });
+    });
+    var rejectBtn = document.querySelector("[data-reject]");
+    if (rejectBtn) rejectBtn.addEventListener("click", function (e) { if (!reason.value.trim()) { e.preventDefault(); reason.focus(); reason.placeholder = "Pick a reason or write one first"; } });
+    // keyboard: A approve · R reject · J next
+    document.addEventListener("keydown", function (e) {
+      if (e.ctrlKey || e.metaKey || e.altKey || /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName)) return;
+      var k = e.key.toLowerCase();
+      if (k === "a" && document.getElementById("approve-form")) { e.preventDefault(); document.getElementById("approve-form").requestSubmit(); }
+      else if (k === "r" && reason) { e.preventDefault(); reason.focus(); }
+      else if (k === "j") { {% if next_doc %}e.preventDefault(); location.href = "{% url 'dashboard:document_review' next_doc.pk %}{% if request.GET %}?{{ request.GET.urlencode|escapejs }}{% endif %}";{% endif %} }
+    });
+  })();
+</script>
+{% endif %}{% endblock %}

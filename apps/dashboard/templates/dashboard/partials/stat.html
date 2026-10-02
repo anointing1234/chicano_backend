@@ -1,12 +1,12 @@
 {% comment %}
-  Metric card. Include with: title, value, icon, desc (what the number means), delta (percent vs previous
-  period or None), bad_up (True when a rise is bad, e.g. cancellations), href + link (optional), alert (bool).
-  Every card in a row is the same height; the optional link sits in a footer strip at the bottom.
+  KPI card (A01 / DS6 "Stat cards"). Include with: title, value, icon, desc (what the number means / split),
+  delta (percent vs previous period, or None) or d (a metrics.mk_delta dict), bad_up (True when a rise is bad),
+  href (optional, whole card links),
+  alert (True = "needs attention" amber border), alarm (True = red border).
 {% endcomment %}
 {% load dashboard_tags %}
-{% if href %}<a class="stat{% if alert %} stat-alert{% endif %}" href="{{ href }}">{% else %}<div class="stat{% if alert %} stat-alert{% endif %}">{% endif %}
-  <div class="stat-top"><span class="stat-title">{{ title }}</span><span class="stat-icon" aria-hidden="true">{% icon icon|default:"chart" 17 %}</span></div>
+{% if href %}<a class="stat{% if alert %} attn{% endif %}{% if alarm %} alarm{% endif %}" href="{{ href }}">{% else %}<div class="stat{% if alert %} attn{% endif %}{% if alarm %} alarm{% endif %}">{% endif %}
+  <div class="stat-title">{% if icon %}{% icon icon 15 %}{% endif %}{{ title }}</div>
   <div class="stat-value">{{ value }}</div>
-  <div class="stat-desc">{% if delta is not None %}{% delta_badge delta bad_up %}{% endif %}<span>{{ desc }}</span></div>
-  {% if href %}<span class="stat-spacer"></span><span class="stat-link">{{ link|default:"View details" }} {% icon "arrow" 14 %}</span>{% endif %}
+  <div class="stat-desc">{% if d %}<span class="delta delta-{{ d.tone }}">{% icon d.arrow 13 2.6 %}{{ d.text }}</span>{% elif delta is not None %}{% delta_badge delta bad_up %}{% endif %}{% if desc %}<span>{{ desc }}</span>{% endif %}</div>
 {% if href %}</a>{% else %}</div>{% endif %}

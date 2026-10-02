@@ -12,7 +12,8 @@ class VehicleSerializer(serializers.ModelSerializer):
     class Meta:
         model = Vehicle
         fields = ["id", "kind", "make", "model", "year", "color", "plate_number", "seats", "ride_types",
-                  "has_rider_helmet", "has_passenger_helmet", "has_reflective_vest", "status", "is_active", "created_at"]
+                  "has_rider_helmet", "has_delivery_box", "has_reflective_vest", "has_passenger_helmet",
+                  "status", "is_active", "created_at"]
         read_only_fields = ["id", "kind", "ride_types", "status", "is_active", "created_at"]
 
     def validate_plate_number(self, value):

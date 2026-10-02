@@ -2,10 +2,10 @@
 Providers = the people who do the trips.
 
     ProviderProfile.service = "car"  -> a DRIVER (Driver app · Cars)
-    ProviderProfile.service = "bike" -> a RIDER  (Rider app · Bikes)
+    ProviderProfile.service = "bike" -> a dispatch RIDER  (Rider app · Bikes: package delivery)
 
 Same table, same onboarding pipeline, same earnings ledger. Differences are driven by
-`service`: required documents, vehicle kind, and the bike helmet checks.
+`service`: required documents, vehicle kind, and the bike kit (helmet, delivery box).
 
 Onboarding pipeline (status):
     applied -> documents_pending -> under_review -> approved
@@ -94,10 +94,11 @@ class Vehicle(BaseModel):
     plate_number = models.CharField(max_length=15, unique=True)
     seats = models.PositiveSmallIntegerField(default=4)
     ride_types = models.ManyToManyField("pricing.RideType", blank=True, help_text="Ride types this vehicle may serve (set on approval).")
-    # Bike safety kit (ignored for cars)
+    # Bike kit (ignored for cars). Riders need their own helmet to go online.
     has_rider_helmet = models.BooleanField(default=False)
-    has_passenger_helmet = models.BooleanField(default=False)
+    has_delivery_box = models.BooleanField(default=False, help_text="Top box or delivery bag for packages.")
     has_reflective_vest = models.BooleanField(default=False)
+    has_passenger_helmet = models.BooleanField(default=False, help_text="Old passenger-bike field. No longer required.")
     status = models.CharField(max_length=10, choices=VehicleStatus.choices, default=VehicleStatus.PENDING)
     is_active = models.BooleanField(default=True, help_text="The vehicle currently being driven.")
 

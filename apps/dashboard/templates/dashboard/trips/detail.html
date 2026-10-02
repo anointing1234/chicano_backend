@@ -1,91 +1,172 @@
 {% extends "dashboard/base.html" %}
-{# One ride: route, people, money, payments, ratings, dispatch attempts, timeline; refund (full or partial) and cancel. #}
-{% load dashboard_tags %}
-{% block title %}Ride #{{ ride.pk|stringformat:"s"|slice:":8" }}{% endblock %}
-{% block panel %}customer{% endblock %}
-{% block crumbs %}<li><a href="{% url 'dashboard:trips' %}">Rides</a></li><li aria-current="page">#{{ ride.pk|stringformat:"s"|slice:":8" }}</li>{% endblock %}
-{% block heading %}Ride #{{ ride.pk|stringformat:"s"|slice:":8" }}{% endblock %}
+{# A03 Trip detail: route map, event timeline, dispute (quoted vs charged), resolution (no refund / difference / full) and the refund dialog. #}
+{% load static dashboard_tags %}
+{% block title %}Trip {{ ride|trip_ref }}{% endblock %}
+{% block head %}<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">{% endblock %}
+{% block crumbs %}<li><a href="{% url 'dashboard:trips' %}">Trips</a></li><li aria-current="page">{{ ride|trip_ref }}</li>{% endblock %}
 {% block content %}
 <div class="page-header">
-  <div><h1>{{ ride.ride_type.name }} {% service_tag ride.service %}</h1>
-    <p>Requested {{ ride.requested_at|date:"D j M Y, H:i" }} · {{ ride.city }} · <span class="mono">{{ ride.pk }}</span></p>
-    <div class="chips">{% badge ride.status %}{% badge ride.payment_status %}{% if ride.needs_manual_dispatch and ride.status == "searching" %}{% badge "urgent" "Needs manual dispatch" %}{% endif %}</div></div>
+  <div>
+    <h1>{% if ride.service == "bike" %}Delivery{% else %}Trip{% endif %} {{ ride|trip_ref }}</h1>
+    <p>{% service_tag ride.service %}{% if dispute %}<span class="badge badge-bad">Disputed</span>{% else %}{% ride_badge ride %}{% endif %}
+      <span>{{ ride.requested_at|date:"D j M" }} · {{ ride.pickup_address|truncatechars:26 }} → {{ ride.dropoff_address|truncatechars:26 }}</span></p>
+  </div>
   <div class="page-actions">
-    {% if ride.status == "searching" and can.dispatch %}<a class="btn btn-primary" href="{% url 'dashboard:dispatch' %}?ride={{ ride.pk }}">{% icon "radar" 16 %} Assign manually</a>{% endif %}
-    {% if can.rides_cancel and can_cancel_now %}<button class="btn btn-danger" type="button" data-dialog="cancel">Cancel ride</button>{% endif %}
-    {% if can.rides_refund and can_refund_now %}<button class="btn btn-secondary" type="button" data-dialog="refund">{% icon "card" 16 %} Refund…</button>{% endif %}
+    <a class="btn btn-secondary" href="tel:{{ ride.customer.phone }}">{% icon "message" 17 %}Contact user</a>
+    {% if ride.provider %}<a class="btn btn-secondary" href="tel:{{ ride.provider.user.phone }}">{% icon "phone" 17 %}Contact {% if ride.service == "bike" %}rider{% else %}driver{% endif %}</a>{% endif %}
+    {% if ride.status == "searching" and can.dispatch %}<a class="btn btn-primary" href="{% url 'dashboard:dispatch' %}?ride={{ ride.pk }}">{% icon "radar" 17 %}Assign</a>{% endif %}
+    {% if can.rides_cancel and can_cancel_now %}<button class="btn btn-danger-outline" type="button" data-dialog="cancel">{% icon "x" 17 %}Cancel</button>{% endif %}
   </div>
 </div>
 
 <div class="grid grid-main">
-  <section class="card">
-    <div class="card-head"><h2>Trip</h2></div>
-    <ol class="timeline" style="margin-bottom:14px">
-      <li><strong>Pickup</strong> {{ ride.pickup_address }}{% if ride.pickup_note %}<span class="t-time">Note: {{ ride.pickup_note }}</span>{% endif %}</li>
-      {% for s in stops %}<li><strong>Stop {{ s.order }}</strong> {{ s.address }}</li>{% endfor %}
-      <li><strong>Drop-off</strong> {{ ride.dropoff_address }}</li>
-    </ol>
-    <dl class="kv">
-      <div><dt>Customer</dt><dd><a href="{% url 'dashboard:user_detail' ride.customer.pk %}">{{ ride.customer.full_name }}</a> · {{ ride.customer.phone }}</dd></div>
-      <div><dt>Driver / rider</dt><dd>{% if ride.provider %}<a href="{% url 'dashboard:provider_detail' ride.provider.pk %}">{{ ride.provider.user.full_name }}</a> · {{ ride.provider.user.phone }}{% else %}<span class="muted">Not assigned</span>{% endif %}</dd></div>
-      <div><dt>Vehicle</dt><dd>{% if ride.vehicle %}{{ ride.vehicle.color }} {{ ride.vehicle.make }} {{ ride.vehicle.model }} · <span class="mono">{{ ride.vehicle.plate_number }}</span>{% else %}—{% endif %}</dd></div>
-      <div><dt>Distance · time</dt><dd>{{ ride.distance_m|km }} · {{ ride.duration_s|minutes }} (estimated)</dd></div>
-      <div><dt>Map</dt><dd><a href="https://www.google.com/maps/dir/?api=1&origin={{ ride.pickup_lat }},{{ ride.pickup_lng }}&destination={{ ride.dropoff_lat }},{{ ride.dropoff_lng }}" target="_blank" rel="noopener">Open route in Google Maps</a></dd></div>
-      {% if ride.scheduled_for %}<div><dt>Scheduled for</dt><dd>{{ ride.scheduled_for|date:"D j M, H:i" }}</dd></div>{% endif %}
-      {% if ride.service == "bike" %}<div><dt>Helmet</dt><dd>Handed over {{ ride.helmet_handed_over_at|date:"H:i"|default:"—" }} · returned {{ ride.helmet_returned_at|date:"H:i"|default:"—" }}</dd></div>{% endif %}
-      {% if ride.status == "cancelled" %}<div><dt>Cancellation</dt><dd>By {{ ride.get_cancelled_by_display|default:ride.cancelled_by }} at {{ ride.cancelled_at|date:"H:i" }}{% if ride.cancel_reason %} — “{{ ride.cancel_reason }}”{% endif %}{% if ride.cancellation_fee_amount %} · fee {{ ride.cancellation_fee_amount|naira }}{% endif %}</dd></div>{% endif %}
-    </dl>
-  </section>
-  <section class="card">
-    <div class="card-head"><h2>Fare breakdown</h2></div>
-    <table class="money"><tbody>
-      <tr><td>Fare</td><td>{{ ride.gross_amount|naira:True }}</td></tr>
-      {% if ride.wait_charge_amount %}<tr><td class="muted">incl. waiting charge</td><td class="muted">{{ ride.wait_charge_amount|naira:True }}</td></tr>{% endif %}
-      {% if ride.discount_amount %}<tr><td>Promo {% if ride.quote.promo %}<span class="mono">{{ ride.quote.promo.code }}</span>{% endif %} <span class="muted">(platform-funded)</span></td><td>−{{ ride.discount_amount|naira:True }}</td></tr>{% endif %}
-      <tr class="total"><td>Customer pays ({{ ride.payment_method|label }})</td><td>{{ ride.total_amount|naira:True }}</td></tr>
-      {% if ride.tip_amount %}<tr><td>Tip (all to {% if ride.service == "car" %}driver{% else %}rider{% endif %})</td><td>{{ ride.tip_amount|naira:True }}</td></tr>{% endif %}
-      <tr><td>Platform commission</td><td>{{ ride.commission_amount|naira:True }}</td></tr>
-      {% if ride.refunded_amount %}<tr><td>Refunded</td><td class="neg">−{{ ride.refunded_amount|naira:True }}</td></tr>{% endif %}
-      {% if ride.payment_method == "cash" and ride.status == "completed" %}<tr><td>Cash collected</td><td>{% if ride.cash_collected_at %}{{ ride.cash_collected_at|date:"j M, H:i" }}{% else %}<span class="chip warn">Not yet</span>{% endif %}</td></tr>{% endif %}
-    </tbody></table>
-    {% if payments %}
-      <h3 class="section-title">Payment records</h3>
-      <ul class="list">{% for p in payments %}<li class="list-row"><div><div class="cell-main">{{ p.get_purpose_display }} · {{ p.method|label }}</div><div class="cell-sub">{{ p.created_at|date:"j M, H:i" }}{% if p.gateway_reference %} · <span class="mono">{{ p.gateway_reference }}</span>{% endif %}{% if p.failure_reason %} · {{ p.failure_reason }}{% endif %}</div></div>
-        <div class="right"><div class="num">{{ p.amount|naira:True }}</div>{% if p.status == "succeeded" %}{% badge "paid" "Succeeded" %}{% else %}{% badge "failed" %}{% endif %}</div></li>{% endfor %}</ul>
-    {% endif %}
-    {% for r in ratings %}<p class="small" style="margin-top:12px"><strong>{% if r.direction == "customer_to_provider" %}Customer rated the {% if ride.service == "car" %}driver{% else %}rider{% endif %}{% else %}{% if ride.service == "car" %}Driver{% else %}Rider{% endif %} rated the customer{% endif %}:</strong> {{ r.stars }}/5{% if r.tags %} · {{ r.tags|join:", " }}{% endif %}{% if r.comment %} · “{{ r.comment }}”{% endif %}</p>{% endfor %}
-  </section>
-</div>
+  <div class="stack">
+    <section class="card flush" aria-label="Route map">
+      <div class="map" style="height:330px" data-route-map
+           data-pickup="{{ ride.pickup_lat }},{{ ride.pickup_lng }}" data-dropoff="{{ ride.dropoff_lat }},{{ ride.dropoff_lng }}"
+           data-stops="{% for s in stops %}{{ s.lat }},{{ s.lng }}{% if not forloop.last %};{% endif %}{% endfor %}"
+           data-driver="{% if ride.provider and ride.provider.last_lat and ride.is_active %}{{ ride.provider.last_lat }},{{ ride.provider.last_lng }}{% endif %}"></div>
+      <span class="map-label" style="left:14px;bottom:14px;background:#fff;color:var(--ink);box-shadow:var(--shadow-sm)">— Planned {{ ride.distance_m|km }}</span>
+    </section>
 
-<div class="grid grid-2">
-  <section class="card">
-    <div class="card-head"><div><h2>Timeline</h2><p>Newest first</p></div></div>
-    {% if events %}<ol class="timeline">{% for e in events %}<li><strong>{{ e.event|label }}</strong>{% if e.actor %} <span class="muted small">by {{ e.actor.full_name }}</span>{% endif %}<span class="t-time">{{ e.created_at|date:"j M, H:i:s" }}</span></li>{% endfor %}</ol>
-    {% else %}{% include "dashboard/partials/empty.html" with title="No events recorded" icon="clock" %}{% endif %}
-  </section>
-  <section class="card">
-    <div class="card-head"><div><h2>Dispatch attempts</h2><p>Who was offered this ride</p></div></div>
-    {% for o in offers %}<div class="list-row"><div><div class="cell-main">{{ o.provider.user.full_name }}{% if o.is_manual %} <span class="chip">manual</span>{% endif %}</div><div class="cell-sub">{{ o.distance_to_pickup_m|km }} from pickup · offered {{ o.created_at|date:"H:i:s" }}</div></div>{% badge o.status %}</div>
-    {% empty %}{% include "dashboard/partials/empty.html" with title="No offers sent" icon="radar" %}{% endfor %}
-    {% if tickets %}<h3 class="section-title">Support tickets about this ride</h3>
-      {% for t in tickets %}<a class="list-row" href="{% url 'dashboard:ticket_detail' t.pk %}"><span>{{ t.subject }}</span>{% badge t.status %}</a>{% endfor %}{% endif %}
-  </section>
+    <section class="card" aria-labelledby="tl-h">
+      <div class="card-head"><div><h2 id="tl-h">Event timeline</h2><p>From trip GPS and app events</p></div></div>
+      {% if timeline %}
+        <ol class="timeline">
+          {% for e in timeline %}<li class="{{ e.cls }}"><span class="rail"></span><div class="body"><div class="head"><span class="t">{{ e.title }}</span><span class="t-time">{{ e.at|time:"H:i:s" }}</span></div>{% if e.sub %}<div class="s">{{ e.sub }}</div>{% endif %}</div></li>{% endfor %}
+          {% if dispute %}<li class="c-red"><span class="rail"></span><div class="body"><div class="head"><span class="t">Dispute opened by user</span><span class="t-time">{{ dispute.created_at|time:"H:i:s" }}</span></div><div class="s">“{{ dispute.subject }}”</div></div></li>{% endif %}
+        </ol>
+      {% else %}{% include "dashboard/partials/empty.html" with title="No events recorded" icon="clock" %}{% endif %}
+    </section>
+  </div>
+
+  <div class="stack">
+    {% if dispute %}
+    <section class="card" aria-labelledby="dp-h">
+      <div class="card-head"><div><h2 id="dp-h">Dispute</h2></div><span class="badge badge-amber">{{ dispute.get_status_display }} · {{ dispute_age }}</span></div>
+      <div style="font-size:14px;line-height:1.5;color:var(--text-2)">“{{ dispute_msg.body|default:dispute.subject|truncatechars:220 }}”<br><span class="muted small">{{ dispute.user.full_name }} · via app · <a href="{% url 'dashboard:ticket_detail' dispute.pk %}">open ticket</a></span></div>
+      {% if quoted is not None %}
+        <div class="money-row"><span>Quoted (upfront)</span><span>{{ quoted|naira }}</span></div>
+        <div class="money-row"><span>Charged</span><span>{{ charged|naira }}</span></div>
+        <div class="money-row total"><span>Difference</span><span>{{ difference|naira }}</span></div>
+        <div class="dash-line"></div>
+      {% endif %}
+      <div class="small" style="color:var(--text-2)"><b>System check:</b>
+        {% if ride.wait_charge_amount %}includes {{ ride.wait_charge_amount|naira }} waiting charge.{% elif difference %}charged {{ difference|naira }} more than quoted.{% else %}charged the quoted fare.{% endif %}
+        {% if stops %}{{ stops|length }} stop{{ stops|length|pluralize }} added by the user.{% else %}No user-added stop.{% endif %}</div>
+    </section>
+    {% else %}
+    <section class="card" aria-labelledby="fare-h">
+      <div class="card-head"><div><h2 id="fare-h">Fare</h2></div>{% badge ride.payment_status %}</div>
+      {% if quoted is not None %}<div class="money-row"><span>Quoted (upfront)</span><span>{{ quoted|naira }}</span></div>{% endif %}
+      <div class="money-row"><span>Fare</span><span>{{ ride.gross_amount|naira }}</span></div>
+      {% if ride.wait_charge_amount %}<div class="money-row"><span>incl. waiting time</span><span>{{ ride.wait_charge_amount|naira }}</span></div>{% endif %}
+      {% if ride.discount_amount %}<div class="money-row"><span>Promo {% if ride.quote.promo %}<span class="mono">{{ ride.quote.promo.code }}</span>{% endif %}</span><span>−{{ ride.discount_amount|naira }}</span></div>{% endif %}
+      {% if ride.tip_amount %}<div class="money-row"><span>Tip</span><span>{{ ride.tip_amount|naira }}</span></div>{% endif %}
+      <div class="dash-line"></div>
+      <div class="money-row total"><span>Customer pays · {{ ride.get_payment_method_display }}</span><span>{{ charged|naira }}</span></div>
+      <div class="money-row"><span>Platform commission</span><span>{{ ride.commission_amount|naira }}</span></div>
+      {% if ride.refunded_amount %}<div class="money-row"><span>Refunded</span><span class="neg">−{{ ride.refunded_amount|naira }}</span></div>{% endif %}
+      {% if ride.payment_method == "cash" and ride.status == "completed" %}<div class="money-row"><span>Cash collected</span><span>{% if ride.cash_collected_at %}{{ ride.cash_collected_at|date:"j M, H:i" }}{% else %}<span class="badge badge-amber">Not yet</span>{% endif %}</span></div>{% endif %}
+    </section>
+    {% endif %}
+
+    {% if can.rides_refund and can_refund_now %}
+    <section class="card" aria-labelledby="res-h">
+      <div class="card-head"><div><h2 id="res-h">Resolution</h2></div></div>
+      <div class="choice-row" role="radiogroup" aria-label="Refund amount">
+        <label class="choice"><input type="radio" name="resolution" value="0" data-label="No refund"{% if not difference %} checked{% endif %}>No refund</label>
+        {% if difference %}<label class="choice"><input type="radio" name="resolution" value="{{ difference }}" checked>Difference<br>{{ difference|naira }}</label>{% endif %}
+        <label class="choice"><input type="radio" name="resolution" value="{{ refundable }}">Full {{ refundable|naira }}</label>
+      </div>
+      <button class="btn btn-primary btn-block" type="button" data-review-refund>{% icon "check" 17 %}Review refund</button>
+    </section>
+    {% endif %}
+
+    {% if ride.service == "bike" and ride.package_kind %}
+    <section class="card" aria-labelledby="pk-h">
+      <div class="card-head"><div><h2 id="pk-h">Package</h2><p>Bike delivery</p></div>{% if ride.package_collected_at %}<span class="badge badge-good">Collected {{ ride.package_collected_at|time:"H:i" }}</span>{% else %}<span class="badge badge-amber">Not collected</span>{% endif %}</div>
+      <div class="package-box">{% icon "box" 20 %}<div><div class="t">{{ ride.package_kind }}, {{ ride.package_size }}{% if ride.package_fragile %} · fragile{% endif %}</div>
+        {% if ride.package_contents %}<div class="s">{{ ride.package_contents }}</div>{% endif %}
+        <div class="s">To {{ ride.recipient_name }} · <a href="tel:{{ ride.recipient_phone }}">{{ ride.recipient_phone|spaced_phone }}</a></div></div></div>
+    </section>
+    {% endif %}
+
+    <section class="card" aria-labelledby="pp-h">
+      <div class="card-head"><div><h2 id="pp-h">People</h2></div></div>
+      <div class="person"><span class="avatar md">{{ ride.customer.full_name|initials }}</span><div class="grow"><a class="cell-main" href="{% url 'dashboard:customers' %}?user={{ ride.customer.pk }}">{{ ride.customer.full_name|default:"Customer" }}</a><div class="cell-sub">Customer · {{ ride.customer.phone|masked_phone }}</div></div></div>
+      {% if ride.provider %}<div class="person"><span class="avatar md">{{ ride.provider.user.full_name|initials }}</span><div class="grow"><a class="cell-main" href="{% url 'dashboard:provider_detail' ride.provider.pk %}">{{ ride.provider.user.full_name }}</a><div class="cell-sub">{% if ride.service == "bike" %}Rider{% else %}Driver{% endif %} · ★ {{ ride.provider.rating_avg|floatformat:2 }}</div></div>{% if ride.vehicle %}<span class="plate">{{ ride.vehicle.plate_number }}</span>{% endif %}</div>
+      {% else %}<p class="muted small" style="margin:0">No {% if ride.service == "bike" %}rider{% else %}driver{% endif %} assigned.</p>{% endif %}
+      {% for r in ratings %}<div class="small" style="color:var(--text-2)"><b>{% if r.direction == "customer_to_provider" %}Customer rated{% else %}{% if ride.service == "bike" %}Rider{% else %}Driver{% endif %} rated{% endif %}</b> {{ r.stars }}★{% if r.tags %} · {{ r.tags|join:", " }}{% endif %}{% if r.comment %} · “{{ r.comment }}”{% endif %}</div>{% endfor %}
+    </section>
+
+    {% if offers or payments %}
+    <section class="card" aria-labelledby="da-h">
+      <div class="card-head"><div><h2 id="da-h">Dispatch &amp; payments</h2></div></div>
+      {% for o in offers %}<div class="list-row"><div><div class="cell-main">{{ o.provider.user.full_name }}{% if o.is_manual %} <span class="chip">manual</span>{% endif %}</div><div class="cell-sub">{{ o.distance_to_pickup_m|km }} from pickup · {{ o.created_at|time:"H:i:s" }}</div></div>{% badge o.status %}</div>{% endfor %}
+      {% for p in payments %}<div class="list-row"><div><div class="cell-main">{{ p.get_purpose_display }} · {{ p.method|label }}</div><div class="cell-sub">{{ p.created_at|date:"j M, H:i" }}{% if p.failure_reason %} · {{ p.failure_reason }}{% endif %}</div></div><div class="right"><div class="tabular">{{ p.amount|naira }}</div>{% if p.status == "succeeded" %}{% badge "paid" "Succeeded" %}{% else %}{% badge "failed" %}{% endif %}</div></div>{% endfor %}
+    </section>
+    {% endif %}
+  </div>
 </div>
 
 {% if can.rides_refund and can_refund_now %}
 <dialog id="refund" class="modal" aria-labelledby="refund-t">
-  <form method="post" action="{% url 'dashboard:trip_refund' ride.pk %}">{% csrf_token %}
-    <div class="dialog-head"><h2 id="refund-t">Refund this ride</h2><button type="button" class="dialog-close" data-close aria-label="Close">{% icon "x" 18 %}</button></div>
+  <form method="post" action="{% url 'dashboard:trip_refund' ride.pk %}" data-refund-form>{% csrf_token %}
+    {% if dispute %}<input type="hidden" name="resolve_ticket" value="{{ dispute.pk }}">{% endif %}
+    <input type="hidden" name="amount" value="{{ default_refund }}" data-amount-kobo>
+    <div class="dialog-head"><div class="dialog-icon">{% icon "cash" 20 %}</div><h2 id="refund-t" data-refund-title>Refund to {{ ride.customer.first_name|default:"the customer" }}?</h2></div>
     <div class="dialog-main">
-      <p>{% if ride.payment_method == "card" %}Goes back to the customer's card.{% else %}Goes to the customer's Chicano wallet.{% endif %} Up to <strong>{{ refundable|naira:True }}</strong> can be refunded. Enter the full amount for a full refund, or less for a partial refund.{% if request.user.staff_role == "support" %} Support can refund up to ₦5,000.{% endif %}</p>
-      <div class="field"><label for="{{ refund_form.amount.id_for_label }}">Amount <span class="req" aria-hidden="true">*</span></label><div class="money-input">{{ refund_form.amount }}</div></div>
-      <div class="field"><label for="{{ refund_form.reason.id_for_label }}">Reason <span class="req" aria-hidden="true">*</span></label>{{ refund_form.reason }}<span class="help">Stored in the audit log.</span></div>
-      <div class="field check">{{ refund_form.claw_back }}<div><label for="{{ refund_form.claw_back.id_for_label }}">Also deduct it from the {% if ride.service == "car" %}driver{% else %}rider{% endif %}'s earnings</label><span class="help">Only for a confirmed overcharge or wrong route.</span></div></div>
+      <p>{% if ride.payment_method == "card" %}The trip was paid by card, so the refund goes back to the card.{% else %}The trip was paid {% if ride.payment_method == "cash" %}in cash{% else %}from the wallet{% endif %}, so the refund goes to {{ ride.customer.first_name|default:"their" }}'s Chicano wallet as credit.{% endif %} They'll get a push and email. This is logged under your name.{% if request.user.staff_role == "support" %} Support can refund up to ₦5,000.{% endif %}</p>
+      <div class="field"><label for="refund-reason">Reason (shared with user)</label><input id="refund-reason" type="text" name="reason" maxlength="255" required
+        value="{% if dispute and difference %}Route longer than planned. Refunded difference to upfront fare.{% endif %}"></div>
+      <label class="check-line"><input type="checkbox" name="claw_back">Flag trip {{ ride|trip_ref }} for {% if ride.service == "bike" %}rider{% else %}driver{% endif %} review (deduct it from their earnings)</label>
     </div>
-    <div class="dialog-foot"><button type="button" class="btn btn-ghost" data-close>Cancel</button><button class="btn btn-primary" type="submit">Process refund</button></div>
+    <div class="dialog-foot"><button type="button" class="btn btn-secondary" data-close>Cancel</button><button class="btn btn-primary" type="submit" data-refund-submit>{% icon "check" 17 %}Issue refund</button></div>
+  </form>
+</dialog>
+<dialog id="no-refund" class="modal" aria-labelledby="nr-t">
+  <form method="post" action="{% url 'dashboard:trip_no_refund' ride.pk %}">{% csrf_token %}
+    {% if dispute %}<input type="hidden" name="resolve_ticket" value="{{ dispute.pk }}">{% endif %}
+    <div class="dialog-head"><div class="dialog-icon">{% icon "info" 20 %}</div><h2 id="nr-t">Close {% if dispute %}the dispute{% else %}this{% endif %} without a refund?</h2></div>
+    <div class="dialog-main">
+      <p>{% if dispute %}{{ dispute.user.first_name }} gets your reply and the ticket is resolved.{% else %}There's no open dispute on this trip, so nothing is sent.{% endif %}</p>
+      <div class="field"><label for="nr-reason">Reply to the user</label><input id="nr-reason" type="text" name="reason" maxlength="255" required value="We checked the trip: the fare matches the route taken."></div>
+    </div>
+    <div class="dialog-foot"><button type="button" class="btn btn-secondary" data-close>Cancel</button><button class="btn btn-primary" type="submit"{% if not dispute %} disabled{% endif %}>Send and resolve</button></div>
   </form>
 </dialog>
 {% endif %}
 {% url 'dashboard:trip_cancel' ride.pk as cancel_url %}
-{% include "dashboard/partials/reason_dialog.html" with id="cancel" action=cancel_url heading="Cancel this ride?" text="The customer isn't charged. Both sides get a notification." button="Cancel ride" danger=True %}
+{% include "dashboard/partials/reason_dialog.html" with id="cancel" action=cancel_url heading="Cancel this trip?" text="The customer isn't charged. Both sides get a notification." button="Cancel trip" danger=True %}
+{% endblock %}
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" defer></script>
+<script src="{% static 'dashboard/routemap.js' %}" defer></script>
+<script>
+  // Resolution → refund dialog: amount and title follow the chosen option; "No refund" opens the reply dialog.
+  (function () {
+    var btn = document.querySelector("[data-review-refund]");
+    if (!btn) return;
+    var first = "{{ ride.customer.first_name|escapejs }}" || "the customer";
+    function fmt(k) { return "₦" + Math.round(k / 100).toLocaleString("en-NG"); }
+    function chosen() { var r = document.querySelector('input[name="resolution"]:checked'); return r ? parseInt(r.value, 10) : 0; }
+    function sync() {
+      var k = chosen();
+      btn.lastChild.textContent = k ? "Review refund" : "Close without refund";
+    }
+    document.querySelectorAll('input[name="resolution"]').forEach(function (r) { r.addEventListener("change", sync); });
+    sync();
+    btn.addEventListener("click", function () {
+      var k = chosen();
+      var dlg = document.getElementById(k ? "refund" : "no-refund");
+      if (k) {
+        dlg.querySelector("[data-amount-kobo]").value = (k / 100).toFixed(2);
+        dlg.querySelector("[data-refund-title]").textContent = "Refund " + fmt(k) + " to " + first + ("{{ ride.payment_method }}" === "card" ? "'s card?" : "'s wallet?");
+        dlg.querySelector("[data-refund-submit]").lastChild.textContent = "Issue " + fmt(k) + " refund";
+      }
+      if (dlg.showModal) dlg.showModal(); else dlg.setAttribute("open", "");
+    });
+  })();
+</script>
 {% endblock %}

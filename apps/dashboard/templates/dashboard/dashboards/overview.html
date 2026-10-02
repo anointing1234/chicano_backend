@@ -1,110 +1,133 @@
 {% extends "dashboard/base.html" %}
-{# Platform overview: the most important numbers from both panels + what needs attention + live map. #}
-{% load static dashboard_tags %}
-{% block title %}Platform overview{% endblock %}
-{% block head %}<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">{% endblock %}
+{# A01 Overview: 8 KPIs (live + the chosen period), completed trips by hour (cars vs bikes), needs attention, live trip requests. #}
+{% load dashboard_tags %}
+{% block title %}Overview{% endblock %}
 {% block content %}
-<div class="page-header">
-  <div><h1>Good day, {{ request.user.first_name|default:"team" }}</h1>
-    <p>{{ period.label }} · {% if service == "car" %}cars only{% elif service == "bike" %}bikes only{% else %}cars and bikes{% endif %}. Figures come straight from the database.</p></div>
-  {% include "dashboard/dashboards/_toolbar.html" %}
-</div>
-
-<h2 class="section-title">Needs attention now</h2>
-<div class="stats">
-  {% url 'dashboard:dispatch' as u1 %}{% url 'dashboard:support' as u2 %}{% url 'dashboard:documents' as u3 %}{% url 'dashboard:providers' as u4 %}
-  {% include "dashboard/partials/stat.html" with title="Needs manual dispatch" value=now.needs_manual_dispatch|num icon="radar" desc="Rides that missed 3 offers or had nobody nearby" href=u1 link="Open dispatch" alert=now.needs_manual_dispatch %}
-  {% include "dashboard/partials/stat.html" with title="Open SOS alerts" value=now.open_sos|num icon="alert" desc="Emergency alerts not yet resolved" href=u2|add:"?tab=sos" link="Respond" alert=now.open_sos %}
-  {% include "dashboard/partials/stat.html" with title="Documents to review" value=d.documents_pending|num icon="doc" desc="Uploaded by drivers and riders, waiting for compliance" href=u3 link="Review documents" %}
-  {% include "dashboard/partials/stat.html" with title="Live trips" value=c.rides_now|num icon="route" desc="Searching, on the way, or in progress right now" %}
-</div>
-
-<h2 class="section-title">{{ period.label }}</h2>
-<div class="stats">
-  {% include "dashboard/partials/stat.html" with title="Completed rides" value=c.rides_completed|num icon="check" desc="Trips finished in the period" delta=c.rides_completed_delta %}
-  {% include "dashboard/partials/stat.html" with title="Gross bookings" value=c.gross|naira icon="money" desc="What customers paid for completed trips" delta=c.gross_delta %}
-  {% include "dashboard/partials/stat.html" with title="Platform commission" value=c.commission|naira icon="bank" desc="Our share of completed fares" %}
-  {% include "dashboard/partials/stat.html" with title="Drivers & riders online" value=d.online|num icon="wheel" desc=d.online_desc %}
-</div>
-
-<div class="grid grid-main">
-  <section class="card">
-    <div class="card-head"><div><h2>Completed rides per day</h2><p>{{ period.label }}</p></div></div>
-    {% include "dashboard/partials/bar_chart.html" with series=c.chart_rides aria="Completed rides per day" dense=False %}
+{# ---- phone (A10): what to act on now, then four live numbers #}
+<div class="phone-only phone-board">
+  <div class="overline">Act now</div>
+  <section class="card tight" style="padding:4px 14px">
+    {% for a in b.attention %}
+      <div class="attn-row"><div class="attn-icon {{ a.tone }}">{% icon a.icon 18 %}</div>
+        <div class="grow"><div class="t">{{ a.title }}</div><div class="s">{{ a.sub }}</div></div>
+        {% with "dashboard:"|add:a.url as route %}<a href="{% url route %}{{ a.query }}">{{ a.link }}</a>{% endwith %}</div>
+    {% empty %}<div class="attn-row"><div class="attn-icon good">{% icon "check" 18 %}</div><div class="grow"><div class="t">All clear</div><div class="s">Nothing needs you right now</div></div></div>{% endfor %}
   </section>
-  <section class="card">
-    <div class="card-head"><div><h2>Rides by type</h2><p>Completed in the period</p></div></div>
-    {% include "dashboard/partials/hbars.html" with rows=c.by_ride_type %}
-  </section>
-</div>
-
-{% if recent_rides is not None or recent_applications is not None %}
-<div class="grid grid-main">
-  {% if recent_rides is not None %}
-  <section class="card">
-    <div class="card-head"><div><h2>Recent rides</h2><p>The latest bookings, newest first</p></div>
-      <a class="btn btn-ghost btn-sm" href="{% url 'dashboard:trips' %}">View all {% icon "arrow" 14 %}</a></div>
-    {% if recent_rides %}
-    <div class="table-wrap"><table class="table responsive">
-      <thead><tr><th>Ride</th><th>Customer</th><th>Driver / rider</th><th class="right">Fare</th><th>Status</th></tr></thead>
-      <tbody>{% for r in recent_rides %}
-        <tr class="clickable" data-href="{% url 'dashboard:trip_detail' r.pk %}">
-          <td class="primary"><a href="{% url 'dashboard:trip_detail' r.pk %}">{{ r.ride_type.name }}</a> {% service_tag r.service %}<div class="cell-sub">{{ r.requested_at|ago }}</div></td>
-          <td>{{ r.customer.full_name|default:r.customer.phone }}</td>
-          <td>{% if r.provider %}{{ r.provider.user.full_name }}{% else %}<span class="muted">Not assigned</span>{% endif %}</td>
-          <td class="right">{{ r.total_amount|naira }}</td>
-          <td>{% badge r.status %}</td>
-        </tr>{% endfor %}</tbody>
-    </table></div>
-    {% else %}{% include "dashboard/partials/empty.html" with title="No rides yet" text="Bookings from the User apps appear here." icon="route" %}{% endif %}
-  </section>
-  {% endif %}
-  {% if recent_applications is not None %}
-  <section class="card">
-    <div class="card-head"><div><h2>New applications</h2><p>Drivers and riders who signed up</p></div>
-      <a class="btn btn-ghost btn-sm" href="{% url 'dashboard:providers' %}?status=under_review">Review {% icon "arrow" 14 %}</a></div>
-    {% if recent_applications %}
-    <ul class="list">{% for p in recent_applications %}
-      <li><a class="list-row" href="{% url 'dashboard:provider_detail' p.pk %}">
-        <span class="person"><span class="avatar" aria-hidden="true">{{ p.user.full_name|initials }}</span>
-          <span><span class="cell-main">{{ p.user.full_name|default:p.user.phone }}</span> {% service_tag p.service %}<span class="cell-sub" style="display:block">{{ p.created_at|ago }} · {{ p.city }}</span></span></span>
-        {% badge p.status %}</a></li>{% endfor %}</ul>
-    {% else %}{% include "dashboard/partials/empty.html" with title="No applications yet" icon="wheel" %}{% endif %}
-  </section>
-  {% endif %}
-</div>
-{% endif %}
-
-{% if recent_payments %}
-<section class="card">
-  <div class="card-head"><div><h2>Recent transactions</h2><p>Fares, tips, top-ups and refunds</p></div>
-    <a class="btn btn-ghost btn-sm" href="{% url 'dashboard:payments' %}">View all {% icon "arrow" 14 %}</a></div>
-  <div class="table-wrap"><table class="table responsive">
-    <thead><tr><th>Type</th><th>Customer</th><th>Method</th><th class="right">Amount</th><th>Status</th><th>When</th></tr></thead>
-    <tbody>{% for pay in recent_payments %}
-      <tr{% if pay.ride_id %} class="clickable" data-href="{% url 'dashboard:trip_detail' pay.ride_id %}"{% endif %}>
-        <td class="primary"><span class="cell-main">{{ pay.get_purpose_display }}</span>{% if pay.ride_id %}<div class="cell-sub mono">#{{ pay.ride_id|stringformat:"s"|slice:":8" }}</div>{% endif %}</td>
-        <td>{{ pay.user.full_name|default:pay.user.phone }}</td>
-        <td>{{ pay.method|label }}</td>
-        <td class="right"><span class="{% if pay.amount < 0 %}neg{% endif %}">{{ pay.amount|naira }}</span></td>
-        <td>{% if pay.status == "succeeded" %}{% badge "succeeded" "Succeeded" %}{% else %}{% badge "failed" "Failed" %}{% endif %}</td>
-        <td class="nowrap">{{ pay.created_at|ago }}</td>
-      </tr>{% endfor %}</tbody>
-  </table></div>
-</section>
-{% endif %}
-
-<section class="card">
-  <div class="card-head"><div><h2>Live map</h2><p data-map-count>Loading…</p></div>
-    {% if can.dispatch %}<a class="btn btn-secondary btn-sm" href="{% url 'dashboard:dispatch' %}">Open dispatch {% icon "arrow" 14 %}</a>{% endif %}</div>
-  <div class="map-shell">
-    <div class="map skeleton" data-live-map="{% url 'dashboard:live_data' %}" data-every="10000" role="region" aria-label="Live map of drivers and riders"></div>
-    <div class="map-panel" data-map-panel hidden></div>
+  <div class="overline">Right now</div>
+  <div class="stats">
+    {% include "dashboard/partials/stat.html" with title="Active trips" value=b.active|num desc=b.active_desc %}
+    {% include "dashboard/partials/stat.html" with title="Online supply" value=b.online|num desc=b.online_desc %}
+    {% include "dashboard/partials/stat.html" with title=b.completed_title value=b.completed|num d=b.completed_delta %}
+    {% include "dashboard/partials/stat.html" with title=b.revenue_title value=b.revenue d=b.revenue_delta %}
   </div>
-  <div class="map-legend"><span><i class="car"></i>Driver (car) available</span><span><i class="bike"></i>Rider (bike) available</span><span><i class="busy"></i>On a trip</span><span><i class="ride"></i>Waiting ride</span></div>
+  <a class="list-row card tight" href="{% url 'dashboard:reports' %}" style="flex-direction:row;font-weight:700;font-size:15px">Full reports work best on desktop {% icon "chev-right" 18 %}</a>
+</div>
+
+<div class="page-header phone-hide">
+  <div>
+    <h1>Overview</h1>
+    <p><span class="live-dot" aria-hidden="true"></span><span data-updated>Live · updated just now</span></p>
+  </div>
+  <div class="page-actions">
+    {% include "dashboard/partials/range_filter.html" %}
+    <a class="btn btn-secondary export" href="{% query export='csv' %}">{% icon "download" 17 %}Export</a>
+  </div>
+</div>
+
+<div class="phone-hide stats">
+  {% include "dashboard/partials/stat.html" with title="Active users now" icon="people" value=b.users_now|num d=b.users_delta desc=b.users_desc %}
+  {% include "dashboard/partials/stat.html" with title="Online supply" icon="radar" value=b.online|num desc=b.online_desc %}
+  {% include "dashboard/partials/stat.html" with title="Active trips" icon="route" value=b.active|num desc=b.active_desc %}
+  {% include "dashboard/partials/stat.html" with title=b.completed_title icon="check-circle" value=b.completed|num d=b.completed_delta desc=b.completed_desc %}
+  {% include "dashboard/partials/stat.html" with title="Cancellation rate" icon="x" value=b.cancel_rate d=b.cancel_delta desc=b.cancel_desc %}
+  {% include "dashboard/partials/stat.html" with title=b.revenue_title icon="cash" value=b.revenue d=b.revenue_delta desc=b.revenue_desc %}
+  {% include "dashboard/partials/stat.html" with title="Pending approvals" icon="hourglass" value=b.pending|num d=b.pending_delta desc=b.pending_desc alert=b.pending %}
+  {% include "dashboard/partials/stat.html" with title="Open support issues" icon="headset" value=b.tickets|num d=b.tickets_delta desc=b.tickets_desc alert=b.tickets %}
+</div>
+
+<div class="phone-hide grid grid-main attn-first">
+  <section class="card" aria-labelledby="chart-h">
+    <div class="card-head">
+      <div><h2 id="chart-h">Completed trips by hour</h2><p>{% if chart_yesterday %}Yesterday · {% endif %}Cars vs bikes, {{ cities.0 }}</p></div>
+      {% if chart_yesterday %}<a class="btn btn-ghost" href="{% query chart='' %}">Back to {{ period.label|lower }}</a>
+      {% else %}<a class="btn btn-ghost" href="{% query chart='yesterday' %}">Compare: yesterday</a>{% endif %}
+    </div>
+    <div class="chart-legend"><span><i class="car"></i>Cars</span><span><i class="bike"></i>Bikes</span></div>
+    {% if chart_total %}{% hour_chart chart %}
+    {% else %}{% include "dashboard/partials/empty.html" with title="No completed trips yet" text="Trips appear here by the hour as they finish." icon="chart" %}{% endif %}
+  </section>
+
+  <section class="card" id="attention" aria-labelledby="attn-h">
+    <div class="card-head">
+      <div><h2 id="attn-h">Needs attention</h2></div>
+      {% if b.attention_total %}<span class="badge badge-bad badge-count nodot">{{ b.attention_total }}</span>{% endif %}
+    </div>
+    <div>
+      {% for a in b.attention %}
+        <div class="attn-row">
+          <div class="attn-icon {{ a.tone }}">{% icon a.icon 18 %}</div>
+          <div class="grow"><div class="t">{{ a.title }}</div><div class="s">{{ a.sub }}</div></div>
+          {% with "dashboard:"|add:a.url as route %}<a href="{% url route %}{{ a.query }}">{{ a.link }}</a>{% endwith %}
+        </div>
+      {% empty %}
+        {% include "dashboard/partials/empty.html" with title="All clear" text="No SOS, overdue tickets, failed payments, documents or unassigned requests." icon="check-circle" tone="good" %}
+      {% endfor %}
+    </div>
+  </section>
+</div>
+
+{% if live is not None %}
+<section class="phone-hide card" aria-labelledby="live-h">
+  <div class="card-head">
+    <div><h2 id="live-h">Live trip requests</h2></div>
+    <form class="filters" method="get" data-autosubmit>
+      {% for k, v in request.GET.items %}{% if k != "live_status" and k != "live_service" %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}{% endfor %}
+      <div class="f"><label for="live-status">Status</label>
+        <select id="live-status" name="live_status">{% for k, t in live_statuses %}<option value="{{ k }}"{% if k == live_status %} selected{% endif %}>{{ t }}</option>{% endfor %}</select></div>
+      <div class="f"><label for="live-service">Service</label>
+        <select id="live-service" name="live_service"><option value="">All</option>
+          <option value="car"{% if live_service == "car" %} selected{% endif %}>Cars</option><option value="bike"{% if live_service == "bike" %} selected{% endif %}>Bikes</option></select></div>
+      <noscript><button class="btn btn-secondary btn-sm" type="submit">Apply</button></noscript>
+    </form>
+  </div>
+  {% if live %}
+  <div class="table-wrap">
+    <table class="table responsive tablet-compact">
+      <thead><tr><th class="t-hide">Trip</th><th>Service</th><th>User</th><th class="t-hide">Route</th><th>Status</th><th class="t-hide">Fare</th><th class="t-hide">Time</th></tr></thead>
+      <tbody>
+      {% for r in live %}
+        <tr data-href="{% url 'dashboard:trip_detail' r.pk %}">
+          <td class="primary t-hide"><a class="mono" href="{% url 'dashboard:trip_detail' r.pk %}">{{ r|trip_ref }}</a></td>
+          <td>{% service_tag r.service %}</td>
+          <td><div class="person"><span class="avatar" aria-hidden="true">{{ r.customer.full_name|initials }}</span>
+            <div><div class="cell-main">{{ r.customer.full_name|default:"Customer" }}</div><div class="cell-sub">{{ r.customer.phone|masked_phone }}</div></div></div></td>
+          <td class="t-hide"><div class="cell-main">{{ r.pickup_address|truncatechars:22 }} → {{ r.dropoff_address|truncatechars:22 }}</div>
+            <div class="cell-sub">{{ r.ride_type.name }} · {{ r.get_payment_method_display }}</div></td>
+          <td>{% ride_badge r %}</td>
+          <td class="t-hide"><div class="cell-main tabular">{{ r.total_amount|naira }}</div><div class="cell-sub">{% if r.status == "completed" %}final{% else %}est.{% endif %}</div></td>
+          <td class="nowrap t-hide">{% if r.status == "searching" %}{% wait_badge r.requested_at now %}{% else %}{{ r.requested_at|ago }}{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  <div class="pager"><span>Showing {{ live|length }} of {{ live_count|num }}</span><a href="{% url 'dashboard:trips' %}">View all trips</a></div>
+  {% else %}
+    {% include "dashboard/partials/empty.html" with title="No trips match these filters" clear_url="?" icon="search" %}
+  {% endif %}
 </section>
+{% endif %}
 {% endblock %}
 {% block scripts %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js" defer></script>
-<script src="{% static 'dashboard/livemap.js' %}" defer></script>
+<script>
+  // "Live · updated N s ago", and a quiet reload every 60 s while the tab is visible (KPIs are live counts).
+  (function () {
+    var el = document.querySelector("[data-updated]"), t0 = Date.now();
+    setInterval(function () {
+      var s = Math.round((Date.now() - t0) / 1000);
+      if (el) el.textContent = "Live · updated " + (s < 60 ? s + " s" : Math.floor(s / 60) + " min") + " ago";
+      if (s >= 60 && !document.hidden && !document.querySelector("dialog[open], details[open], .select.is-open")) location.reload();
+    }, 5000);
+  })();
+</script>
 {% endblock %}

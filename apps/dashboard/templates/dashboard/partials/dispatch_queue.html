@@ -1,17 +1,11 @@
-{# Waiting rides; "Needs you" first. Rendered in dispatch.html and refreshed alone every 5 s. #}
+{# Waiting requests on Dispatch (A07); rendered in dispatch.html and refreshed alone every 5 s. #}
 {% load dashboard_tags %}
-{% if queue %}
-  <ul class="list">
-    {% for r in queue %}
-      <li><a class="list-row{% if selected and selected.pk == r.pk %} selected{% endif %}" href="?ride={{ r.pk }}#assign"{% if selected and selected.pk == r.pk %} aria-current="true"{% endif %}>
-        <div style="min-width:0">{% service_tag r.service %} <span class="cell-main">{{ r.pickup_address }}</span>
-          <div class="cell-sub">→ {{ r.dropoff_address }}</div>
-          <div class="cell-sub">{{ r.customer.full_name }} · waiting {{ r.requested_at|timesince }}</div></div>
-        <div class="right">{% if r.needs_manual_dispatch %}{% badge "urgent" "Needs you" %}{% else %}{% badge "searching" "Auto" %}{% endif %}
-          <div class="small num">{{ r.total_amount|naira }}</div></div>
-      </a></li>
-    {% endfor %}
-  </ul>
-{% else %}
-  {% include "dashboard/partials/empty.html" with title="No one is waiting" text="New requests appear here within seconds." icon="check" %}
-{% endif %}
+{% for r in queue %}
+  <a class="req-card{% if selected and selected.pk == r.pk %} selected{% endif %}" href="?ride={{ r.pk }}{% if f.ride_type %}&ride_type={{ f.ride_type }}{% endif %}#assign"{% if selected and selected.pk == r.pk %} aria-current="true"{% endif %}>
+    <div class="top"><span class="mono">{{ r|trip_ref }}</span><span class="badge {% if r.wait_s >= 300 %}badge-bad{% else %}badge-amber{% endif %} nodot sm">Waiting {{ r.wait_label }}</span></div>
+    <div class="t">{{ r.pickup_address|truncatechars:22 }} → {{ r.dropoff_address|truncatechars:22 }}</div>
+    <div class="s">{% if r.service == "bike" %}Bike{% else %}Car{% endif %} · {{ r.ride_type.name }}{% if r.declines %} · {{ r.declines }} decline{{ r.declines|pluralize }}{% endif %} · {{ r.customer.full_name|default:"Customer" }}{% if r.needs_manual_dispatch %} · <b style="color:var(--bad)">needs you</b>{% endif %}</div>
+  </a>
+{% empty %}
+  <div class="card tight">{% include "dashboard/partials/empty.html" with title="No one is waiting" text="New requests appear here within seconds." icon="check-circle" tone="good" %}</div>
+{% endfor %}
