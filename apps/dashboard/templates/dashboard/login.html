@@ -8,6 +8,19 @@
   <link rel="icon" href="{% static 'dashboard/favicon.svg' %}" type="image/svg+xml">
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@500;600;700&display=swap">
   <link rel="stylesheet" href="{% static 'dashboard/dashboard.css' %}">
+  <style>
+    /* Show / hide password (eye button inside the field) */
+    .pw-wrap { position: relative; }
+    .pw-wrap input { width: 100%; padding-right: 52px; }
+    .pw-toggle { position: absolute; top: 50%; right: 6px; transform: translateY(-50%); display: grid; place-items: center;
+      width: 40px; height: 40px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--muted, #6B645A); cursor: pointer; }
+    .pw-toggle:hover { color: var(--ink, #16130F); background: rgba(22, 19, 15, .05); }
+    .pw-toggle:focus-visible { outline: 2px solid var(--orange, #E7770B); outline-offset: 1px; }
+    .pw-toggle svg { width: 20px; height: 20px; }
+    .pw-toggle .eye-off { display: none; }
+    .pw-toggle[aria-pressed="true"] .eye { display: none; }
+    .pw-toggle[aria-pressed="true"] .eye-off { display: block; }
+  </style>
 </head>
 <body>
 <main class="login">
@@ -33,7 +46,13 @@
         {% for e in form.email.errors %}<span class="error">{{ e }}</span>{% endfor %}
       </div>
       <div class="field{% if form.password.errors %} has-error{% endif %}">
-        <label for="{{ form.password.id_for_label }}">Password</label>{{ form.password }}
+        <label for="{{ form.password.id_for_label }}">Password</label>
+        <div class="pw-wrap">{{ form.password }}
+          <button class="pw-toggle" type="button" aria-label="Show password" aria-pressed="false" aria-controls="{{ form.password.id_for_label }}" data-pw-toggle>
+            <svg class="eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+            <svg class="eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.6 5.1A10.6 10.6 0 0 1 12 5c6.5 0 10 7 10 7a17.7 17.7 0 0 1-2.9 3.9M6.6 6.6C3.9 8.3 2 12 2 12s3.5 7 10 7c1.9 0 3.6-.6 5-1.5"/><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/><path d="m3 3 18 18"/></svg>
+          </button>
+        </div>
         {% for e in form.password.errors %}<span class="error">{{ e }}</span>{% endfor %}
       </div>
       <button class="btn btn-navy" type="submit">Sign in</button>
@@ -41,5 +60,23 @@
   </section>
 </main>
 <script src="{% static 'dashboard/dashboard.js' %}"></script>
+<script>
+  // Eye button: show / hide the password (keeps the cursor where it was).
+  document.querySelectorAll("[data-pw-toggle]").forEach(function (btn) {
+    var input = document.getElementById(btn.getAttribute("aria-controls"));
+    if (!input) return;
+    btn.addEventListener("click", function () {
+      var show = input.type === "password";
+      var start = input.selectionStart, end = input.selectionEnd;
+      input.type = show ? "text" : "password";
+      btn.setAttribute("aria-pressed", show ? "true" : "false");
+      btn.setAttribute("aria-label", show ? "Hide password" : "Show password");
+      input.focus();
+      try { input.setSelectionRange(start, end); } catch (e) {}
+    });
+    // hide it again before the form is sent, so the browser can offer to save it as a password
+    if (input.form) input.form.addEventListener("submit", function () { input.type = "password"; });
+  });
+</script>
 </body>
 </html>
